@@ -137,12 +137,12 @@ def _joint_split_residual(model: newton.Model, state: newton.State) -> tuple[flo
 def build_humanoid(robot: str, *, add_ground: bool) -> newton.Model:
     robot_builder = newton.ModelBuilder()
     robot_builder.default_joint_cfg = newton.ModelBuilder.JointDofConfig(
-        limit_ke=1.0e3, limit_kd=1.0e1, friction=1.0e-5
+        limit_ke=1.0e3, limit_kd=1.0e4, friction=1.0e-5
     )
 
     if robot == "h1":
         robot_builder.default_shape_cfg.ke = 2.0e3
-        robot_builder.default_shape_cfg.kd = 1.0e2
+        robot_builder.default_shape_cfg.kd = 2.0e5
         robot_builder.default_shape_cfg.kf = 1.0e3
         robot_builder.default_shape_cfg.mu = 0.75
         asset_path = newton.utils.download_asset("unitree_h1")
@@ -154,11 +154,11 @@ def build_humanoid(robot: str, *, add_ground: bool) -> newton.Model:
         robot_builder.approximate_meshes("bounding_box")
         for i in range(len(robot_builder.joint_target_ke)):
             robot_builder.joint_target_ke[i] = 150.0
-            robot_builder.joint_target_kd[i] = 5.0
+            robot_builder.joint_target_kd[i] = 750.0
             robot_builder.joint_target_mode[i] = int(JointTargetMode.POSITION)
     elif robot == "g1":
         robot_builder.default_shape_cfg.ke = 1.0e3
-        robot_builder.default_shape_cfg.kd = 2.0e2
+        robot_builder.default_shape_cfg.kd = 2.0e5
         robot_builder.default_shape_cfg.kf = 1.0e3
         robot_builder.default_shape_cfg.mu = 0.75
         asset_path = newton.utils.download_asset("unitree_g1")
@@ -172,7 +172,7 @@ def build_humanoid(robot: str, *, add_ground: bool) -> newton.Model:
         )
         for i in range(6, robot_builder.joint_dof_count):
             robot_builder.joint_target_ke[i] = 500.0
-            robot_builder.joint_target_kd[i] = 10.0
+            robot_builder.joint_target_kd[i] = 5000.0
             robot_builder.joint_target_mode[i] = int(JointTargetMode.POSITION)
         robot_builder.approximate_meshes("bounding_box")
     else:
@@ -181,7 +181,7 @@ def build_humanoid(robot: str, *, add_ground: bool) -> newton.Model:
     builder = newton.ModelBuilder()
     builder.add_builder(robot_builder)
     builder.default_shape_cfg.ke = 1.0e3
-    builder.default_shape_cfg.kd = 2.0e2 if robot == "g1" else 1.0e2
+    builder.default_shape_cfg.kd = 2.0e5 if robot == "g1" else 1.0e5
     if add_ground:
         builder.add_ground_plane()
     builder.color()
@@ -193,7 +193,6 @@ def solver_stiffness_kwargs(joint_stiffness: str) -> dict:
         return {}
     if joint_stiffness == "fixed_high":
         return {
-            "rigid_joint_adaptive_stiffness": False,
             "rigid_joint_linear_ke": 1.0e8,
             "rigid_joint_angular_ke": 1.0e6,
             "rigid_joint_linear_kd": 0.0,
