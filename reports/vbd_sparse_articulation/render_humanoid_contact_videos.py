@@ -202,7 +202,10 @@ def main() -> None:
         "--modes", nargs="+", default=["local", "block_sparse_joints"], choices=["local", "block_sparse_joints"]
     )
     parser.add_argument(
-        "--joint-stiffness", nargs="+", default=["default", "fixed_high"], choices=["default", "fixed_high"]
+        "--joint-stiffness",
+        nargs="+",
+        default=["default", "fixed_high"],
+        choices=["default", "fixed_high", "fixed_high_beta"],
     )
     parser.add_argument("--steps", type=int, default=90)
     parser.add_argument("--iterations", type=int, default=3)

@@ -198,6 +198,14 @@ def solver_stiffness_kwargs(joint_stiffness: str) -> dict:
             "rigid_joint_linear_kd": 0.0,
             "rigid_joint_angular_kd": 0.0,
         }
+    if joint_stiffness == "fixed_high_beta":
+        return {
+            "rigid_joint_linear_ke": 1.0e8,
+            "rigid_joint_angular_ke": 1.0e6,
+            "rigid_joint_linear_kd": 0.0,
+            "rigid_joint_angular_kd": 0.0,
+            "rigid_avbd_beta": 1.0e5,
+        }
     raise ValueError(f"Unsupported joint stiffness preset: {joint_stiffness}")
 
 
@@ -269,7 +277,7 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=90)
     parser.add_argument("--iterations", type=int, default=3)
     parser.add_argument("--contact-mode", default="ground", choices=["ground", "none"])
-    parser.add_argument("--joint-stiffness", default="default", choices=["default", "fixed_high"])
+    parser.add_argument("--joint-stiffness", default="default", choices=["default", "fixed_high", "fixed_high_beta"])
     parser.add_argument("--output", type=Path, default=Path(__file__).with_name("humanoid_contact_cpu.json"))
     args = parser.parse_args()
 

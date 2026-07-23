@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 The Newton Developers -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VBD Sparse Articulation — Reproduction Report</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #262b36; --fg: #e6e9ef;
+    --muted: #9aa4b2; --accent: #6fb3ff; --good: #57c98a; --warn: #e0b054;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 30px; margin: 0 0 4px; letter-spacing: -0.02em; }
+  h2 { font-size: 21px; margin: 48px 0 8px; padding-top: 16px; border-top: 1px solid var(--border); letter-spacing: -0.01em; }
+  h3 { font-size: 16px; margin: 28px 0 8px; color: var(--muted); font-weight: 600; }
+  p { margin: 10px 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: var(--mono); font-size: 0.88em; background: #0b0d11; padding: 1px 5px; border-radius: 4px; }
+  .sub { color: var(--muted); font-size: 14px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 14px 0 4px; color: var(--muted); font-size: 13.5px; }
+  .meta b { color: var(--fg); font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 13.5px; }
+  th, td { padding: 7px 12px; border-bottom: 1px solid var(--border); text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { color: var(--muted); font-weight: 600; border-bottom: 1px solid #333a48; }
+  tbody tr:hover { background: #12151b; }
+  .num { font-family: var(--mono); }
+  .best { color: var(--good); font-weight: 600; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin: 16px 0; }
+  .videos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin: 16px 0; }
+  .videos.single { grid-template-columns: 1fr; }
+  figure { margin: 0; }
+  video { width: 100%; border-radius: 8px; background: #000; border: 1px solid var(--border); display: block; }
+  figcaption { margin-top: 6px; font-size: 13px; color: var(--muted); }
+  figcaption code { font-size: 0.82em; }
+  .callout { border-left: 3px solid var(--accent); background: #12151b; padding: 10px 16px; margin: 14px 0; border-radius: 0 8px 8px 0; }
+  .callout.warn { border-left-color: var(--warn); }
+  ul { margin: 10px 0; padding-left: 22px; }
+  li { margin: 5px 0; }
+  .tag { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  @media (max-width: 640px) { .videos { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>VBD Sparse Articulation — Reproduction Report</h1>
+  <p class="sub">Local reproduction of <a href="https://reports.mmacklin.com/vbd-sparse-articulation/">reports.mmacklin.com/vbd-sparse-articulation</a></p>
+  <div class="meta">
+    <span><b>Device:</b> CPU (no CUDA driver on host)</span>
+    <span><b>Regenerated:</b> 2026-07-23</span>
+    <span><b>Compare:</b> <code>local</code> vs <code>block_sparse_joints</code></span>
+  </div>
+  <p class="sub"><code>local</code> = existing <code>SolverVBD</code> per-body local rigid solve &nbsp;·&nbsp;
+     <code>block_sparse_joints</code> = block-sparse rigid articulation solve.</p>
+
+  <!-- ============================================================ -->
+  <h2>1. Headline result — humanoid ground contact</h2>
+  <p><code>bench_vbd_humanoid_contact.py</code> — 90 steps, 3 iterations, <code>fixed_high</code>
+     joint stiffness, ground contact. At high stiffness the local solve cannot hold the
+     articulation together; the sparse solve keeps joint error near machine noise
+     <b>and</b> runs faster.</p>
+
+  <div class="videos">
+    <figure>
+      <video controls loop muted playsinline poster="videos/h1_fixed_high_local_vs_sparse.jpg">
+        <source src="videos/h1_fixed_high_local_vs_sparse.mp4" type="video/mp4">
+      </video>
+      <figcaption><b>h1</b> — local (left) vs block-sparse (right)</figcaption>
+    </figure>
+    <figure>
+      <video controls loop muted playsinline poster="videos/g1_fixed_high_local_vs_sparse.jpg">
+        <source src="videos/g1_fixed_high_local_vs_sparse.mp4" type="video/mp4">
+      </video>
+      <figcaption><b>g1</b> — local (left) vs block-sparse (right)</figcaption>
+    </figure>
+  </div>
+
+  <table>
+    <thead><tr><th>Robot</th><th>Mode</th><th>Joint ang. L2</th><th>Joint lin. L2</th><th>Max speed [m/s]</th><th>Mean step [ms]</th></tr></thead>
+    <tbody>
+      <tr><td>h1</td><td>local</td><td class="num">1.39e-2</td><td class="num">4.60e-4</td><td class="num">1.699</td><td class="num">2.021</td></tr>
+      <tr><td>h1</td><td>block_sparse_joints</td><td class="num best">5.03e-6</td><td class="num best">9.82e-7</td><td class="num best">0.037</td><td class="num best">1.254</td></tr>
+      <tr><td>g1</td><td>local</td><td class="num">8.04e-3</td><td class="num">8.55e-4</td><td class="num">2.266</td><td class="num">2.868</td></tr>
+      <tr><td>g1</td><td>block_sparse_joints</td><td class="num best">9.98e-5</td><td class="num best">3.18e-5</td><td class="num best">0.0015</td><td class="num best">1.377</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li><b>Joint error:</b> sparse reduces angular residual <b>~2760×</b> (h1) and <b>~81×</b> (g1); linear residual <b>~470×</b> (h1) and <b>~27×</b> (g1).</li>
+    <li><b>Stability:</b> local shows large spurious body velocities (1.7–2.3 m/s) as stiff joints fight the solver; sparse stays effectively at rest.</li>
+    <li><b>Cost:</b> sparse is <b>~1.6× faster</b> despite the higher-quality solve.</li>
+  </ul>
+
+  <h3>1b. With penalty ramping (<code>beta=1e5</code>)</h3>
+  <p>Same stiffness ceilings, but ramping the penalty from a soft seed instead of fixing it high. Cells are <code>beta=0 → beta=1e5</code>.</p>
+  <table>
+    <thead><tr><th>Robot</th><th>Mode</th><th>Joint ang. L2</th><th>Joint lin. L2</th><th>Max speed [m/s]</th></tr></thead>
+    <tbody>
+      <tr><td>h1</td><td>local</td><td class="num">1.39e-2 → 1.34e-3</td><td class="num">4.60e-4 → 7.53e-3</td><td class="num">1.699 → 0.226</td></tr>
+      <tr><td>h1</td><td>block_sparse_joints</td><td class="num">5.03e-6 → 8.14e-4</td><td class="num">9.82e-7 → 4.80e-3</td><td class="num">0.037 → 0.264</td></tr>
+      <tr><td>g1</td><td>local</td><td class="num">8.04e-3 → 7.70e-3</td><td class="num">8.55e-4 → 6.28e-2</td><td class="num">2.266 → 2.453</td></tr>
+      <tr><td>g1</td><td>block_sparse_joints</td><td class="num">9.98e-5 → 6.67e-3</td><td class="num">3.18e-5 → 6.36e-2</td><td class="num">0.0015 → 2.456</td></tr>
+    </tbody>
+  </table>
+  <p>Ramping rescues local h1 (no penetration, calm) but loosens closure, and destabilizes g1 in both modes.</p>
+  <div class="videos">
+    <figure>
+      <video controls loop muted playsinline poster="videos/h1_fixed_high_beta_local_vs_sparse.jpg">
+        <source src="videos/h1_fixed_high_beta_local_vs_sparse.mp4" type="video/mp4"></video>
+      <figcaption>h1, <code>beta=1e5</code> — local (left) vs sparse (right)</figcaption>
+    </figure>
+    <figure>
+      <video controls loop muted playsinline poster="videos/g1_fixed_high_beta_local_vs_sparse.jpg">
+        <source src="videos/g1_fixed_high_beta_local_vs_sparse.mp4" type="video/mp4"></video>
+      <figcaption>g1, <code>beta=1e5</code> — local (left) vs sparse (right)</figcaption>
+    </figure>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>2. Synthetic timing and residuals</h2>
+  <p><code>bench_vbd_sparse_articulation.py</code> — 10 steps, 3 warmup, 1 iteration, perturbed
+     initial state. <code>single</code>/<code>contact_stack</code> have zero joint residual by
+     construction (timing/penetration controls).</p>
+
+  <h3>2a. Per-step cost (mean µs) — cost ratio = sparse / local</h3>
+  <table>
+    <thead><tr><th>Scenario</th><th>Bodies</th><th>Local µs</th><th>Sparse µs</th><th>Cost ratio</th></tr></thead>
+    <tbody>
+      <tr><td>single</td><td>4</td><td class="num">457.6</td><td class="num">474.1</td><td class="num">1.04</td></tr>
+      <tr><td>single</td><td>32</td><td class="num">476.1</td><td class="num">494.0</td><td class="num">1.04</td></tr>
+      <tr><td>single</td><td>64</td><td class="num">524.0</td><td class="num">530.8</td><td class="num">1.01</td></tr>
+      <tr><td>chain_fixed</td><td>4</td><td class="num">529.9</td><td class="num">479.9</td><td class="num best">0.91</td></tr>
+      <tr><td>chain_fixed</td><td>32</td><td class="num">559.3</td><td class="num">509.8</td><td class="num best">0.91</td></tr>
+      <tr><td>chain_fixed</td><td>64</td><td class="num">605.9</td><td class="num">595.4</td><td class="num best">0.98</td></tr>
+      <tr><td>chain_fixed</td><td>128</td><td class="num">731.4</td><td class="num">797.0</td><td class="num">1.09</td></tr>
+      <tr><td>chain_revolute</td><td>4</td><td class="num">511.4</td><td class="num">455.0</td><td class="num best">0.89</td></tr>
+      <tr><td>chain_revolute</td><td>32</td><td class="num">559.8</td><td class="num">496.5</td><td class="num best">0.89</td></tr>
+      <tr><td>chain_revolute</td><td>64</td><td class="num">622.4</td><td class="num">588.1</td><td class="num best">0.94</td></tr>
+      <tr><td>chain_revolute</td><td>128</td><td class="num">746.9</td><td class="num">810.8</td><td class="num">1.09</td></tr>
+    </tbody>
+  </table>
+  <p class="sub">Sparse is competitive-to-faster up to ~64 bodies and ~9% slower at 128 on CPU.</p>
+
+  <h3>2b. Single-step joint residual (L2) at 1 internal iteration</h3>
+  <table>
+    <thead><tr><th>Scenario</th><th>Bodies</th><th>Local L2</th><th>Sparse L2</th></tr></thead>
+    <tbody>
+      <tr><td>chain_fixed</td><td>4</td><td class="num">6.91e-3</td><td class="num">2.00e-2</td></tr>
+      <tr><td>chain_fixed</td><td>32</td><td class="num">2.42e-2</td><td class="num">5.68e-2</td></tr>
+      <tr><td>chain_fixed</td><td>64</td><td class="num">3.58e-2</td><td class="num">8.02e-2</td></tr>
+      <tr><td>chain_fixed</td><td>128</td><td class="num">5.03e-2</td><td class="num">1.14e-1</td></tr>
+      <tr><td>chain_revolute</td><td>4</td><td class="num">4.84e-3</td><td class="num">1.96e-2</td></tr>
+      <tr><td>chain_revolute</td><td>32</td><td class="num">1.49e-2</td><td class="num">5.55e-2</td></tr>
+      <tr><td>chain_revolute</td><td>64</td><td class="num">2.14e-2</td><td class="num">7.83e-2</td></tr>
+      <tr><td>chain_revolute</td><td>128</td><td class="num">3.02e-2</td><td class="num">1.11e-1</td></tr>
+    </tbody>
+  </table>
+  <div class="callout">
+    <b>Note on the crossover.</b> At a <i>single</i> internal iteration on the synthetic
+    perturbation cases, local has the lower residual. The sparse solve's advantage appears
+    once it iterates (§3) and, decisively, under the stiff contact-driven humanoid loads
+    (§1), where local diverges.
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>3. Residual vs internal iterations</h2>
+  <p><code>sweep_vbd_sparse_iterations.py</code> — single perturbed step, joint residual L2.
+     Reduction = local / sparse (&gt;1 means sparse is better, shown green).</p>
+  <table>
+    <thead><tr><th>Scenario</th><th>Bodies</th><th>Iters</th><th>Local</th><th>Sparse</th><th>Reduction</th></tr></thead>
+    <tbody>
+      <tr><td>chain_fixed</td><td>4</td><td>1</td><td class="num">6.91e-3</td><td class="num">2.00e-2</td><td class="num">0.35</td></tr>
+      <tr><td>chain_fixed</td><td>4</td><td>2</td><td class="num">5.03e-3</td><td class="num">3.60e-3</td><td class="num best">1.40</td></tr>
+      <tr><td>chain_fixed</td><td>4</td><td>4</td><td class="num">8.98e-4</td><td class="num">5.79e-3</td><td class="num">0.16</td></tr>
+      <tr><td>chain_fixed</td><td>4</td><td>8</td><td class="num">8.02e-4</td><td class="num">5.00e-4</td><td class="num best">1.60</td></tr>
+      <tr><td>chain_fixed</td><td>32</td><td>1</td><td class="num">2.42e-2</td><td class="num">5.68e-2</td><td class="num">0.43</td></tr>
+      <tr><td>chain_fixed</td><td>32</td><td>2</td><td class="num">1.32e-2</td><td class="num">1.02e-2</td><td class="num best">1.29</td></tr>
+      <tr><td>chain_fixed</td><td>32</td><td>4</td><td class="num">6.77e-3</td><td class="num">1.64e-2</td><td class="num">0.41</td></tr>
+      <tr><td>chain_fixed</td><td>32</td><td>8</td><td class="num">1.89e-3</td><td class="num">1.40e-3</td><td class="num best">1.35</td></tr>
+      <tr><td>chain_fixed</td><td>64</td><td>1</td><td class="num">3.58e-2</td><td class="num">8.02e-2</td><td class="num">0.45</td></tr>
+      <tr><td>chain_fixed</td><td>64</td><td>2</td><td class="num">1.81e-2</td><td class="num">1.45e-2</td><td class="num best">1.24</td></tr>
+      <tr><td>chain_fixed</td><td>64</td><td>4</td><td class="num">1.07e-2</td><td class="num">2.32e-2</td><td class="num">0.46</td></tr>
+      <tr><td>chain_fixed</td><td>64</td><td>8</td><td class="num">2.62e-3</td><td class="num">1.98e-3</td><td class="num best">1.32</td></tr>
+      <tr><td>chain_revolute</td><td>4</td><td>1</td><td class="num">4.84e-3</td><td class="num">1.96e-2</td><td class="num">0.25</td></tr>
+      <tr><td>chain_revolute</td><td>4</td><td>2</td><td class="num">3.83e-3</td><td class="num">3.52e-3</td><td class="num best">1.09</td></tr>
+      <tr><td>chain_revolute</td><td>4</td><td>4</td><td class="num">6.97e-4</td><td class="num">5.67e-3</td><td class="num">0.12</td></tr>
+      <tr><td>chain_revolute</td><td>4</td><td>8</td><td class="num">6.30e-4</td><td class="num">4.88e-4</td><td class="num best">1.29</td></tr>
+      <tr><td>chain_revolute</td><td>32</td><td>1</td><td class="num">1.49e-2</td><td class="num">5.55e-2</td><td class="num">0.27</td></tr>
+      <tr><td>chain_revolute</td><td>32</td><td>2</td><td class="num">1.02e-2</td><td class="num">9.76e-3</td><td class="num best">1.04</td></tr>
+      <tr><td>chain_revolute</td><td>32</td><td>4</td><td class="num">2.83e-3</td><td class="num">1.60e-2</td><td class="num">0.18</td></tr>
+      <tr><td>chain_revolute</td><td>32</td><td>8</td><td class="num">1.38e-3</td><td class="num">1.38e-3</td><td class="num">1.00</td></tr>
+      <tr><td>chain_revolute</td><td>64</td><td>1</td><td class="num">2.14e-2</td><td class="num">7.83e-2</td><td class="num">0.27</td></tr>
+      <tr><td>chain_revolute</td><td>64</td><td>2</td><td class="num">1.40e-2</td><td class="num">1.38e-2</td><td class="num best">1.01</td></tr>
+      <tr><td>chain_revolute</td><td>64</td><td>4</td><td class="num">4.21e-3</td><td class="num">2.27e-2</td><td class="num">0.19</td></tr>
+      <tr><td>chain_revolute</td><td>64</td><td>8</td><td class="num">1.79e-3</td><td class="num">1.95e-3</td><td class="num">0.92</td></tr>
+    </tbody>
+  </table>
+  <p class="sub">Residuals are non-monotonic in iteration count for both modes on these synthetic
+     perturbation cases — the two solves trade the lead at odd vs even iteration counts.
+     <code>loop_fixed</code> is excluded (see Caveats).</p>
+
+  <!-- ============================================================ -->
+  <h2>4. Diagonal contact check</h2>
+  <p><code>bench_vbd_sparse_articulation.py --scenarios contact_stack</code> — 10 steps, 2 iterations.
+     Confirms the sparse path preserves non-penetration and adds only marginal cost.</p>
+  <table>
+    <thead><tr><th>Bodies</th><th>Mode</th><th>Max penetration [m]</th><th>Mean step µs</th><th>Cost ratio</th></tr></thead>
+    <tbody>
+      <tr><td>4</td><td>local</td><td class="num">0.0</td><td class="num">601.8</td><td class="num">1.00</td></tr>
+      <tr><td>4</td><td>block_sparse_joints</td><td class="num">0.0</td><td class="num">616.5</td><td class="num">1.02</td></tr>
+      <tr><td>16</td><td>local</td><td class="num">0.0</td><td class="num">620.7</td><td class="num">1.00</td></tr>
+      <tr><td>16</td><td>block_sparse_joints</td><td class="num">0.0</td><td class="num">653.3</td><td class="num">1.05</td></tr>
+    </tbody>
+  </table>
+  <p class="sub">Zero penetration in all cases; sparse costs 2–5% more on the contact control.</p>
+
+  <!-- ============================================================ -->
+  <h2>Source data files</h2>
+  <table>
+    <thead><tr><th>File</th><th>Produced by</th></tr></thead>
+    <tbody>
+      <tr><td><code>bench_cpu_sparse.json</code></td><td>bench_vbd_sparse_articulation.py (4/32/64 bodies)</td></tr>
+      <tr><td><code>bench_cpu_sparse_128.json</code></td><td>bench_vbd_sparse_articulation.py (128 bodies)</td></tr>
+      <tr><td><code>bench_cpu_sparse_contacts.json</code></td><td>bench_vbd_sparse_articulation.py --scenarios contact_stack</td></tr>
+      <tr><td><code>iteration_sweep_cpu_sparse.json</code> / <code>.md</code></td><td>sweep_vbd_sparse_iterations.py</td></tr>
+      <tr><td><code>humanoid_contact_fixed_high_cpu.json</code></td><td>bench_vbd_humanoid_contact.py</td></tr>
+      <tr><td><code>videos/*.mp4</code>, <code>*.jpg</code>, <code>*_metrics.json</code></td><td>render_humanoid_contact_videos.py</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============================================================ -->
+  <h2>Caveats</h2>
+  <div class="callout warn">
+    <b><code>loop_fixed</code> scenario does not run</b> against the current tree. Every case fails in
+    <code>ModelBuilder.add_articulation</code> with <span class="tag">"Body 0 has multiple parents in this
+    articulation … Loop-closing joints must not be part of an articulation."</span> The builder now rejects
+    loop-closing joints inside an articulation, but <code>build_loop_fixed</code> still adds them there.
+    The main benchmark records these as <code>available: false</code>; the iteration sweep has no error
+    guard, so it was run with <code>chain_fixed</code> / <code>chain_revolute</code> only.
+  </div>
+  <ul>
+    <li><code>bench_robot_perf.py</code> (VBD-vs-MuJoCo throughput) is not part of this run — it is not
+        referenced by the README commands and needs a MuJoCo-capable environment.</li>
+    <li>Absolute per-step times are CPU- and load-dependent; treat them as within-run relative
+        comparisons, not portable absolutes.</li>
+    <li>Videos are ViewerGL, 960×540, rendered headless via Xvfb / software GL.</li>
+  </ul>
+
+</div>
+</body>
+</html>
