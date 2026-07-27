@@ -14,6 +14,7 @@ from .enums import (
     ModelFlags,
     StateFlags,
 )
+from .modal import ModalBasis, ModalGeneratorBeam, ModalGeneratorFEM, ModalGeneratorPOD, ModalGeneratorSampled
 from .model import Model
 from .state import State
 
@@ -25,6 +26,11 @@ __all__ = [
     "EqType",
     "JointTargetMode",
     "JointType",
+    "ModalBasis",
+    "ModalGeneratorBeam",
+    "ModalGeneratorFEM",
+    "ModalGeneratorPOD",
+    "ModalGeneratorSampled",
     "Model",
     "ModelBuilder",
     "ModelFlags",
