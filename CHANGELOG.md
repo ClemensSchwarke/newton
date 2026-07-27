@@ -11,7 +11,7 @@
 - Add experimental `SolverVBD(rigid_articulation_solve="block_sparse_joints")` mode for block-sparse rigid articulation joint solves on CPU and CUDA.
 - Add `ModelBuilder.add_articulation(..., allow_closed_loops=True)` for maximal-coordinate solvers that support loop-closing joints directly.
 - Add URDF importer support for the nonstandard `ball` and `spherical` joint type extensions.
-- Add reduced elastic bodies to `SolverVBD`: `ModelBuilder.add_body_elastic()` and `add_link_elastic()` create a body with a floating frame plus reduced modal coordinates owned by a `JointType.ELASTIC` joint, with modal bases supplied via `ModalBasis`, `ModalGeneratorBeam`, `ModalGeneratorFEM`, `ModalGeneratorPOD`, or `ModalGeneratorSampled`. Elastic links transmit deformation through ordinary joints and rigid contacts, and render as deformed meshes.
+- Add reduced elastic bodies to `SolverVBD`: `ModelBuilder.add_body_elastic()` and `add_link_elastic()` create a body with a floating frame plus reduced modal coordinates owned by a `JointType.ELASTIC` joint, with modal bases supplied via `ModalBasis`, `ModalGeneratorBeam`, `ModalGeneratorFEM`, `ModalGeneratorPOD`, or `ModalGeneratorSampled`. Elastic links transmit deformation through ordinary joints (including the clamp moment carried by `ModalBasis.sample_psi` angular mode shapes) and through rigid surface contacts, couple to their floating frame's gravity, acceleration, centrifugal and Coriolis terms, and render as deformed meshes with per-vertex strain coloring.
 - Add `SolverVBD(rigid_joint_adaptive_stiffness=False)` to pin joint penalties to their per-constraint stiffness caps instead of growing them adaptively, and `SolverVBD(elastic_contact_relaxation=...)` to under-relax reduced elastic modal updates when rigid contacts are present.
 - Add user-defined pressure laws to hydroelastic SDF contact via `HydroelasticSDF.Config.pressure_func` (a `@wp.func` mapping `(signed_depth, shape_idx, data) -> pressure`) and `pressure_data` (a `@wp.struct` carrying per-shape state). The contact patch is the iso-pressure surface `p_a == p_b`; the default linear law `pressure = -kh * signed_depth` is preserved when no callback is supplied.
 - Add `--render-fps` to cap example rendering rate without changing simulation frame timing
@@ -346,33 +346,7 @@
 - Interactive example browser in the GL viewer with tree-view navigation and switch/reset support
 - Add `TetMesh` class and USD loading API for tetrahedral mesh geometry
 - Support kinematic bodies in VBD solver
-- Add reduced elastic body links with floating-frame modal coordinates, VBD support for revolute-joint attachments, and deformed Viewer mesh rendering
-- Add rotational joint coupling for reduced elastic links in `SolverVBD`, so a fixed, prismatic, or revolute attachment transmits a clamp moment into modal bending via per-endpoint angular mode shapes (`ModalBasis.sample_psi`); the coupling is bidirectional, so the beam's modal twist reacts back on the attached rigid body
-- Add angular mode shape (`ModalBasis.sample_psi`) support across the modal generators: `ModalGeneratorBeam` populates it analytically in closed form, `ModalGeneratorSampled` accepts `sample_psi` directly, and `ModalGeneratorPOD` and `ModalGeneratorFEM` can estimate it from the displacement-gradient curl via `derive_psi` (off by default), so any reduced elastic basis can drive joint rotational coupling
-- Add sampled `ModalBasis` and modal generators for reusable reduced elastic mode construction
-- Add `ModalGeneratorFEM` for matrix-based reduced elastic modes from nodal mass, stiffness, and damping matrices
-- Add `ModalBasis` floating-frame inertia coupling integrals (`sample_mass`, `mode_coupling_linear`, `mode_coupling_angular`, `mode_coupling_centrifugal`, `mode_coupling_coriolis`), computed exactly by `ModalGeneratorFEM` and by lumped quadrature from per-sample masses; `mode_mass` is now optional and derived from `sample_mass` when omitted
-- Add floating-frame gravity and translational-acceleration coupling for reduced elastic modes in `SolverVBD` (modal force `S·(g − a)`), so a basis with per-sample masses sags under gravity and is excited by base motion
-- Add floating-frame rotational coupling for reduced elastic modes in `SolverVBD` (Euler, centrifugal, and Coriolis modal forces), so a basis with per-sample masses responds to angular acceleration and steady rotation of its frame
-- Add the reduced elastic modal-to-frame inertia coupling in `SolverVBD` (the back-reaction force and matching moment), so a free-floating elastic body's modal vibration conserves linear and angular momentum
-- Add the reduced elastic modal-to-frame velocity reactions in `SolverVBD`, so a free-floating elastic body that rotates while it deforms conserves momentum
-- Add a reduced elastic gravity coupling example contrasting a coupled and an uncoupled cantilever under self-weight
-- Add a reduced elastic base excitation example contrasting a coupled and an uncoupled cantilever on a vertically oscillating base
-- Add a reduced elastic base rotation example demonstrating the floating-frame rotational (Euler) coupling and its invariance to reference-frame placement
-- Add a reduced elastic centrifugal example where a spinning hub stretches a coupled beam through an axial mode while an uncoupled beam stays rigid
-- Add a reduced elastic Coriolis example where a spinning hub turns a coupled beam's plucked bending mode toward the perpendicular direction while an uncoupled beam keeps swinging in its original plane
-- Add a reduced elastic frame coupling example where a coupled free-floating beam recoils against its plucked bump mode to keep its center of mass fixed while an uncoupled beam lets the center of mass slosh
-- Add a reduced elastic angular frame coupling example where a coupled free-floating beam's plucked antisymmetric bending mode rotates the frame to conserve angular momentum while an uncoupled beam's frame stays fixed
-- Add a reduced elastic clamp moment example where a beam clamped between a fixed wall and a spinning drum twists through the joint rotational coupling while an uncoupled beam stays flat
-- Add a reduced elastic cantilever vibration example with finite modal mass dynamics
-- Add a reduced elastic prismatic compression example with Poisson bulging and parent rotation validation
-- Add reduced elastic crank-slider, Watt linkage, and bell-crank examples with analytic geometry checks
-- Add reduced elastic gravity examples for a tip-weight cantilever and a suspended vertical bar
-- Add a reduced elastic matrix ROM bracket example driven through rigid fixed-joint interfaces
 - Add a flexible dipper arm example with a prismatic actuator loop and suspended rigid payload
-- Add a UR10 reduced elastic car-panel handling example with offline-decimated STL mesh loading support
-- Add reduced elastic surface contacts in VBD, including separate wall-pad, two-gripper pickup, and scraper contact examples
-- Add a reduced elastic monobloc chair stick-slip example using a cached CC0 Poly Haven asset
 - Add a fixed joint stiffness mode to `SolverVBD` for non-adaptive joint penalty solves
 - Add optional per-vertex elastic displacement coloring in ViewerGL
 - Add brick stacking example
@@ -412,9 +386,6 @@
 - Replace `plyfile` dependency with `open3d` for mesh I/O. Users who depended on `plyfile` transitively should install it separately.
 - Switch Python build backend from `hatchling` to `uv_build`
 - Switch mesh-SDF collision from triangle-based gradient descent to edge-based Brent's method to reduce contact jitter
-- Tune reduced elastic torsion and cantilever vibration examples for smoother and faster motion
-- Tune reduced elastic mechanism and gravity examples for clearer visible deformation and camera framing
-- Increase elastic box render tessellation and make the torsion fixture a held 90 degree shaft release with exact surface modal samples
 - Unify heightfield and mesh collision pipeline paths; the separate `heightfield_midphase_kernel` and `shape_pairs_heightfield` buffer are removed in favor of the shared mesh midphase
 - Replace per-shape `Model.shape_heightfield_data` / `Model.heightfield_elevation_data` with compact `Model.shape_heightfield_index` / `Model.heightfield_data` / `Model.heightfield_elevations`, matching the SDF indirection pattern. Use `Model.heightfield_data` indexed via `Model.shape_heightfield_index` instead.
 - Standardize `rigid_contact_normal` to point from shape 0 toward shape 1 (A-to-B), matching the documented convention. Consumers that previously negated the normal on read (XPBD, VBD, MuJoCo, Kamino) no longer need to.
@@ -505,8 +476,6 @@
 - Cap `cbor2` dependency to `<6` to prevent recorder test failures caused by breaking deserialization changes in cbor2 6.0
 - Clamp viewer picking force to prevent explosion when picking light objects near stiff contacts, configurable via `pick_max_acceleration` parameter on the `Picking` class (default 5g of effective articulation mass)
 - Fix `cloth_franka` example Jacobian broken by COM-referenced `body_qd` convention change; adjust robot base height, gripper orientations, and grasp targets for improved reachability (a follow-up PR will migrate the example to `newton.ik`)
-- Render reduced elastic shape meshes double-sided so thin imported shells remain visible in ViewerGL
-- Fix reduced elastic angular joint coupling for rotation-only constraints, modal endpoint damping, finite multi-axis rotations, and revolute drives and limits
 
 ## [1.0.0] - 2026-03-10
 

@@ -137,12 +137,68 @@ If you run the examples from a source checkout with uv, use
         <img width="320" src="https://raw.githubusercontent.com/newton-physics/newton/main/docs/images/examples/example_basic_plotting.jpg" alt="Plotting">
       </a>
     </td>
+    <td align="center" width="33%">
+      <a href="https://github.com/newton-physics/newton/blob/main/newton/examples/basic/example_basic_reduced_elastic_wall_contact.py">
+        <img width="320" src="https://raw.githubusercontent.com/newton-physics/newton/main/docs/images/examples/example_basic_reduced_elastic_wall_contact.jpg" alt="Reduced Elastic Wall Contact">
+      </a>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://github.com/newton-physics/newton/blob/main/newton/examples/basic/example_basic_reduced_elastic_gripper_contact.py">
+        <img width="320" src="https://raw.githubusercontent.com/newton-physics/newton/main/docs/images/examples/example_basic_reduced_elastic_gripper_contact.jpg" alt="Reduced Elastic Gripper Contact">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <code>python -m newton.examples basic_plotting</code>
+    </td>
+    <td align="center" width="33%">
+      <code>python -m newton.examples basic_reduced_elastic_wall_contact</code>
+    </td>
+    <td align="center" width="33%">
+      <code>python -m newton.examples basic_reduced_elastic_gripper_contact</code>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <a href="https://github.com/newton-physics/newton/blob/main/newton/examples/basic/example_basic_reduced_elastic_scraper_contact.py">
+        <img width="320" src="https://raw.githubusercontent.com/newton-physics/newton/main/docs/images/examples/example_basic_reduced_elastic_scraper_contact.jpg" alt="Reduced Elastic Scraper Contact">
+      </a>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://github.com/newton-physics/newton/blob/main/newton/examples/basic/example_basic_reduced_elastic_chair_stick_slip.py">
+        <img width="320" src="https://raw.githubusercontent.com/newton-physics/newton/main/docs/images/examples/example_basic_reduced_elastic_chair_stick_slip.jpg" alt="Reduced Elastic Chair Stick-Slip">
+      </a>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://github.com/newton-physics/newton/blob/main/newton/examples/basic/example_basic_reduced_elastic_matrix_rom.py">
+        <img width="320" src="https://raw.githubusercontent.com/newton-physics/newton/main/docs/images/examples/example_basic_reduced_elastic_matrix_rom.jpg" alt="Reduced Elastic Matrix ROM">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <code>python -m newton.examples basic_reduced_elastic_scraper_contact</code>
+    </td>
+    <td align="center" width="33%">
+      <code>python -m newton.examples basic_reduced_elastic_chair_stick_slip</code>
+    </td>
+    <td align="center" width="33%">
+      <code>python -m newton.examples basic_reduced_elastic_matrix_rom</code>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <a href="https://github.com/newton-physics/newton/blob/main/newton/examples/basic/example_basic_reduced_elastic_dipper.py">
+        <img width="320" src="https://raw.githubusercontent.com/newton-physics/newton/main/docs/images/examples/example_basic_reduced_elastic_dipper.jpg" alt="Reduced Elastic Dipper Arm">
+      </a>
+    </td>
     <td></td>
     <td></td>
   </tr>
   <tr>
     <td align="center" width="33%">
-      <code>python -m newton.examples basic_plotting</code>
+      <code>python -m newton.examples basic_reduced_elastic_dipper</code>
     </td>
     <td></td>
     <td></td>

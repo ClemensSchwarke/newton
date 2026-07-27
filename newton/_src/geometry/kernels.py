@@ -1772,22 +1772,3 @@ def create_elastic_shape_contacts(
     rigid_contact_tids[contact_index] = tid
     rigid_contact_elastic_sample0[contact_index] = -1
     rigid_contact_elastic_sample1[contact_index] = vertex_index
-
-
-# --------------------------------------
-# region Triangle collision detection
-
-# types of triangle's closest point to a point
-TRI_CONTACT_FEATURE_VERTEX_A = wp.constant(0)
-TRI_CONTACT_FEATURE_VERTEX_B = wp.constant(1)
-TRI_CONTACT_FEATURE_VERTEX_C = wp.constant(2)
-TRI_CONTACT_FEATURE_EDGE_AB = wp.constant(3)
-TRI_CONTACT_FEATURE_EDGE_AC = wp.constant(4)
-TRI_CONTACT_FEATURE_EDGE_BC = wp.constant(5)
-TRI_CONTACT_FEATURE_FACE_INTERIOR = wp.constant(6)
-
-# constants used to access TriMeshCollisionDetector.resize_flags
-VERTEX_COLLISION_BUFFER_OVERFLOW_INDEX = wp.constant(0)
-TRI_COLLISION_BUFFER_OVERFLOW_INDEX = wp.constant(1)
-EDGE_COLLISION_BUFFER_OVERFLOW_INDEX = wp.constant(2)
-TRI_TRI_COLLISION_BUFFER_OVERFLOW_INDEX = wp.constant(3)
