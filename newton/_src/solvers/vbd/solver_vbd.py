@@ -897,12 +897,19 @@ class SolverVBD(SolverBase):
         self.elastic_mode_block_applied_residual_norm = wp.zeros(elastic_body_count, dtype=float, device=self.device)
         self.elastic_mode_block_update_norm = wp.zeros(elastic_body_count, dtype=float, device=self.device)
         self.elastic_mode_block_update_max = wp.zeros(elastic_body_count, dtype=float, device=self.device)
-        if elastic_body_count > 0 and getattr(self, "joint_lambda_lin", None) is not None:
+        if elastic_body_count > 0:
+            if self.integrate_with_external_rigid_solver:
+                raise NotImplementedError(
+                    "SolverVBD: reduced elastic bodies require the internal rigid solve; "
+                    "integrate_with_external_rigid_solver=True is not supported."
+                )
             self.joint_lambda_lin_snapshot = wp.clone(self.joint_lambda_lin)
             self.joint_lambda_ang_snapshot = wp.clone(self.joint_lambda_ang)
+            self.joint_penalty_k_snapshot = wp.clone(self.joint_penalty_k)
         else:
             self.joint_lambda_lin_snapshot = None
             self.joint_lambda_ang_snapshot = None
+            self.joint_penalty_k_snapshot = None
         if model.particle_count > 0 and model.shape_count > 0:
             self._init_body_particle_contact_state(model.shape_count * model.particle_count)
 
@@ -1998,7 +2005,7 @@ class SolverVBD(SolverBase):
                 model.joint_X_c,
                 model.joint_axis,
                 self.joint_constraint_start,
-                self.joint_penalty_k,
+                self.joint_penalty_k_snapshot,
                 self.joint_penalty_kd,
                 self.joint_lambda_lin_snapshot,
                 self.joint_lambda_ang_snapshot,
@@ -2150,6 +2157,7 @@ class SolverVBD(SolverBase):
             if self.joint_lambda_lin_snapshot is not None:
                 wp.copy(self.joint_lambda_lin_snapshot, self.joint_lambda_lin)
                 wp.copy(self.joint_lambda_ang_snapshot, self.joint_lambda_ang)
+                wp.copy(self.joint_penalty_k_snapshot, self.joint_penalty_k)
             self._solve_rigid_body_iteration(state_in, state_out, control, contacts, dt)
             self._solve_elastic_body_iteration(state_in, state_out, control, contacts, dt)
             self._solve_particle_iteration(state_in, state_out, contacts, dt, iter_num)
@@ -3824,6 +3832,12 @@ class SolverVBD(SolverBase):
         # Type narrowing: remaining path requires a valid Contacts instance.
         assert contacts is not None
 
+        if joint_q is None and getattr(self.model, "elastic_body_count", 0) > 0:
+            raise ValueError(
+                "collect_rigid_contact_forces: joint_q is required when the model has reduced elastic bodies, "
+                "because elastic contact points are evaluated at the deformed surface. Pass the joint "
+                "coordinates matching body_q (and joint_q_prev matching body_q_prev)."
+            )
         joint_q_resolved = joint_q if joint_q is not None else self.model.joint_q
         joint_q_prev_resolved = joint_q_prev if joint_q_prev is not None else joint_q_resolved
 

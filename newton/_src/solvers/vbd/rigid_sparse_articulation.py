@@ -75,7 +75,9 @@ def _minimum_degree_order(body_count: int, edges: set[tuple[int, int]]) -> list[
     return order
 
 
-def _connected_body_groups(body_count: int, joint_parent, joint_child) -> list[tuple[list[int], list[int]]]:
+def _connected_body_groups(
+    body_count: int, joint_parent: np.ndarray, joint_child: np.ndarray
+) -> list[tuple[list[int], list[int]]]:
     """Group bodies into solver articulations by joint connectivity.
 
     Returns ``(bodies, joints)`` per group. Grouping is derived from joint
@@ -85,6 +87,11 @@ def _connected_body_groups(body_count: int, joint_parent, joint_child) -> list[t
     cannot express a joint that connects two articulations: such a joint is
     silently absorbed into the preceding range, which would place a body in two
     groups and let two independent solves write the same body.
+
+    Note that any joint linking two previously separate articulations merges them
+    into one group. Since the sparse solve cost grows superlinearly in group size,
+    a joint that couples otherwise independent assemblies (for example a shared
+    closed loop across robots) makes the solve more expensive.
     """
     root = list(range(body_count))
 

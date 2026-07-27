@@ -2265,6 +2265,64 @@ def test_vbd_revolute_constraint_solves_elastic_mode(test, device):
     np.testing.assert_allclose(after, [target_anchor, 0.0, 0.0], atol=1.0e-4)
 
 
+def test_vbd_elastic_joint_uses_iteration_consistent_duals(test, device):
+    """The modal block must see the joint duals at the value the rigid solve used.
+
+    ``update_duals_joint`` advances ``joint_lambda_*`` and ``joint_penalty_k`` inside the rigid
+    solve, which runs before the elastic solve. The elastic assembly therefore reads snapshots taken
+    at the start of the iteration. Reading the live arrays makes the mode feel penalty plus the dual
+    that was just derived from the same violation, double counting it: on the first iteration
+    ``lambda`` starts at zero and is set to ``k * C``, so the modal response comes out twice too
+    large and the joint force is no longer equal and opposite.
+
+    One iteration isolates that first update. Adaptive stiffness is left on so the dual path is live.
+    """
+    clamp_local = (0.5, 0.0, 0.0)
+    inertia = wp.mat33(0.02, 0.0, 0.0, 0.0, 0.05, 0.0, 0.0, 0.0, 0.05)
+    initial_twist = 0.3
+    shape_cfg = newton.ModelBuilder.ShapeConfig()
+    shape_cfg.density = 0.0
+    shape_cfg.has_shape_collision = False
+    shape_cfg.has_particle_collision = False
+
+    builder = newton.ModelBuilder(gravity=0.0)
+    beam = builder.add_body_elastic(
+        xform=wp.transform_identity(),
+        mass=1.0,
+        inertia=inertia,
+        com=wp.vec3(0.0, 0.0, 0.0),
+        mode_q=[initial_twist],
+        modal_basis=_pure_twist_basis(clamp_local, True, mode_mass=1.0, mode_stiffness=0.0, mode_damping=0.0),
+    )
+    builder.add_shape_box(beam, hx=0.5, hy=0.05, hz=0.05, cfg=shape_cfg)
+    rigid = builder.add_body(
+        xform=wp.transform(wp.vec3(0.5, 0.0, 0.0), wp.quat_identity()), mass=1.0, inertia=inertia
+    )
+    builder.add_joint_fixed(
+        parent=rigid,
+        child=beam,
+        parent_xform=wp.transform_identity(),
+        child_xform=wp.transform(wp.vec3(*clamp_local), wp.quat_identity()),
+    )
+    builder.color()
+    model = builder.finalize(device=device)
+
+    state_0 = model.state()
+    state_1 = model.state()
+    solver = newton.solvers.SolverVBD(model, iterations=1)
+    test.assertTrue(solver.rigid_joint_adaptive_stiffness)
+
+    owner_joint = int(model.elastic_joint.numpy()[0])
+    q_start = int(model.joint_q_start.numpy()[owner_joint])
+    solver.step(state_0, state_1, model.control(), None, 1.0 / 240.0)
+
+    # The born-violated clamp drives the twist down. Reading live duals instead of the
+    # iteration-start snapshot doubles this first-iteration response.
+    deflection = abs(initial_twist - float(state_1.joint_q.numpy()[q_start + 7]))
+    test.assertGreater(deflection, 2.0e-5)
+    test.assertLess(deflection, 6.0e-5)
+
+
 def test_vbd_fixed_joint_stiffness_pins_penalties(test, device):
     builder = newton.ModelBuilder(gravity=0.0)
     body = builder.add_body(
@@ -3287,6 +3345,12 @@ for device in devices:
         TestReducedElasticBody,
         "test_vbd_fixed_joint_stiffness_pins_penalties",
         test_vbd_fixed_joint_stiffness_pins_penalties,
+        devices=[device],
+    )
+    add_function_test(
+        TestReducedElasticBody,
+        "test_vbd_elastic_joint_uses_iteration_consistent_duals",
+        test_vbd_elastic_joint_uses_iteration_consistent_duals,
         devices=[device],
     )
     add_function_test(
