@@ -18,7 +18,6 @@ import warp as wp
 import newton
 import newton.examples
 
-
 _PITCH_AMPLITUDE = math.radians(50.0)
 _ROLL_AMPLITUDE = math.radians(40.0)
 _PITCH_FREQUENCY = 2.55
@@ -121,7 +120,9 @@ def _motor_axis_config(axis: newton.Axis, lower: float, upper: float) -> newton.
     )
 
 
-def _passive_axis(axis: newton.Axis, lower: float = -math.pi, upper: float = math.pi) -> newton.ModelBuilder.JointDofConfig:
+def _passive_axis(
+    axis: newton.Axis, lower: float = -math.pi, upper: float = math.pi
+) -> newton.ModelBuilder.JointDofConfig:
     return newton.ModelBuilder.JointDofConfig(
         axis=axis,
         limit_lower=lower,
@@ -246,7 +247,9 @@ def _add_robot_foot(builder: newton.ModelBuilder) -> dict[str, str]:
     pitch_rod, pitch_rod_length, pitch_rod_q = _add_rod(
         builder, "pitch_pushrod", pitch_horn_tip, pitch_foot_anchor, shape_cfg
     )
-    left_rod, left_rod_length, left_rod_q = _add_rod(builder, "roll_left_pushrod", roll_left_tip, left_foot_anchor, shape_cfg)
+    left_rod, left_rod_length, left_rod_q = _add_rod(
+        builder, "roll_left_pushrod", roll_left_tip, left_foot_anchor, shape_cfg
+    )
     right_rod, right_rod_length, right_rod_q = _add_rod(
         builder, "roll_right_pushrod", roll_right_tip, right_foot_anchor, shape_cfg
     )

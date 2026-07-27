@@ -1027,6 +1027,15 @@ def _joint_angular_dual_projects_free_axis_lambda(test, device):
         joint_penalty_k = wp.array([10.0, 10.0, 10.0], dtype=float, device=device)
         lambda_lin = wp.zeros(1, dtype=wp.vec3, device=device)
         lambda_ang = wp.array([[5.0, 2.0, 3.0]], dtype=wp.vec3, device=device)
+        body_elastic_index = wp.array([-1], dtype=wp.int32, device=device)
+        elastic_joint = wp.zeros(0, dtype=wp.int32, device=device)
+        elastic_mode_count = wp.zeros(0, dtype=wp.int32, device=device)
+        joint_parent_elastic_endpoint = wp.array([-1], dtype=wp.int32, device=device)
+        joint_child_elastic_endpoint = wp.array([-1], dtype=wp.int32, device=device)
+        elastic_endpoint_phi = wp.zeros(0, dtype=wp.vec3, device=device)
+        elastic_endpoint_psi = wp.zeros(0, dtype=wp.vec3, device=device)
+        joint_q = wp.zeros(1, dtype=float, device=device)
+        joint_q_start = wp.array([0], dtype=wp.int32, device=device)
 
         wp.launch(
             update_duals_joint,
@@ -1058,6 +1067,16 @@ def _joint_angular_dual_projects_free_axis_lambda(test, device):
                 joint_limit_upper,
                 joint_limit_ke,
                 joint_rest_angle,
+                body_elastic_index,
+                elastic_joint,
+                elastic_mode_count,
+                joint_parent_elastic_endpoint,
+                joint_child_elastic_endpoint,
+                elastic_endpoint_phi,
+                elastic_endpoint_psi,
+                0,
+                joint_q,
+                joint_q_start,
             ],
             outputs=[joint_penalty_k, lambda_lin, lambda_ang],
             device=device,
@@ -1231,6 +1250,15 @@ def _body_body_contact_damping_ignores_penalty_ramp(test, device):
         point0_world = wp.empty(4, dtype=wp.vec3, device=device)
         point1_world = wp.empty(4, dtype=wp.vec3, device=device)
         force_on_body1 = wp.empty(4, dtype=wp.vec3, device=device)
+        elastic_sample0 = wp.full(4, -1, dtype=wp.int32, device=device)
+        elastic_sample1 = wp.full(4, -1, dtype=wp.int32, device=device)
+        body_elastic_index = wp.full(body_q.shape[0], -1, dtype=wp.int32, device=device)
+        elastic_joint = wp.zeros(0, dtype=wp.int32, device=device)
+        elastic_mode_count = wp.zeros(0, dtype=wp.int32, device=device)
+        elastic_shape_vertex_local = wp.zeros(0, dtype=wp.vec3, device=device)
+        elastic_shape_vertex_phi = wp.zeros(0, dtype=wp.vec3, device=device)
+        joint_q = wp.zeros(1, dtype=float, device=device)
+        joint_q_start = wp.zeros(1, dtype=wp.int32, device=device)
 
         wp.launch(
             compute_rigid_contact_forces,
@@ -1247,10 +1275,21 @@ def _body_body_contact_damping_ignores_penalty_ramp(test, device):
                 normal,
                 margin0,
                 margin1,
+                elastic_sample0,
+                elastic_sample1,
                 shape_body,
                 body_q,
                 body_q_prev,
                 body_com,
+                body_elastic_index,
+                elastic_joint,
+                elastic_mode_count,
+                elastic_shape_vertex_local,
+                elastic_shape_vertex_phi,
+                0,
+                joint_q,
+                joint_q,
+                joint_q_start,
                 penalty_k,
                 material_ke,
                 material_kd,
