@@ -716,6 +716,25 @@ class TestVBDSparseArticulation(unittest.TestCase):
         self.assertEqual(model.articulation_count, 1)
         np.testing.assert_array_equal(model.joint_articulation.numpy(), np.zeros(4, dtype=np.int32))
 
+    def test_sparse_layout_assigns_each_body_to_one_group(self):
+        builder = newton.ModelBuilder(gravity=0.0)
+        inertia = wp.mat33(np.eye(3, dtype=np.float32))
+        body_a = builder.add_body(xform=wp.transform(wp.vec3(0.0, 0.0, 0.0)), mass=1.0, inertia=inertia)
+        body_b = builder.add_body(xform=wp.transform(wp.vec3(1.0, 0.0, 0.0)), mass=1.0, inertia=inertia)
+        builder.add_joint_fixed(parent=body_a, child=body_b)
+        builder.color()
+        model = builder.finalize(device="cpu")
+
+        self.assertIn(-1, model.joint_articulation.numpy().tolist())
+
+        solver = newton.solvers.SolverVBD(model, iterations=1, rigid_articulation_solve="block_sparse_joints")
+        layout = solver.rigid_articulation_sparse_layout
+        self.assertIsNotNone(layout)
+        bodies = layout.articulation_bodies.numpy().tolist()
+        self.assertEqual(sorted(bodies), sorted(set(bodies)))
+        self.assertEqual(sorted(bodies), list(range(model.body_count)))
+        self.assertEqual(int(layout.articulation_joint_offsets.numpy()[-1]), model.joint_count)
+
     def test_sparse_revolute_projector_uses_parent_frame(self):
         axis = np.array([0.2, -0.4, 0.7], dtype=np.float32)
         axis /= np.linalg.norm(axis)

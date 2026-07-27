@@ -75,16 +75,60 @@ def _minimum_degree_order(body_count: int, edges: set[tuple[int, int]]) -> list[
     return order
 
 
+def _connected_body_groups(body_count: int, joint_parent, joint_child) -> list[tuple[list[int], list[int]]]:
+    """Group bodies into solver articulations by joint connectivity.
+
+    Returns ``(bodies, joints)`` per group. Grouping is derived from joint
+    connectivity rather than :attr:`newton.Model.articulation_start` so that every
+    body belongs to exactly one group and every joint is assigned to the group
+    holding its bodies. ``Model.articulation_start`` is a CSR range over joints and
+    cannot express a joint that connects two articulations: such a joint is
+    silently absorbed into the preceding range, which would place a body in two
+    groups and let two independent solves write the same body.
+    """
+    root = list(range(body_count))
+
+    def find(x: int) -> int:
+        while root[x] != x:
+            root[x] = root[root[x]]
+            x = root[x]
+        return x
+
+    joint_count = int(joint_parent.shape[0])
+    for joint_idx in range(joint_count):
+        parent = int(joint_parent[joint_idx])
+        child = int(joint_child[joint_idx])
+        if parent < 0 or child < 0:
+            continue
+        a, b = find(parent), find(child)
+        if a != b:
+            root[max(a, b)] = min(a, b)
+
+    group_bodies: dict[int, list[int]] = {}
+    for body in range(body_count):
+        group_bodies.setdefault(find(body), []).append(body)
+
+    group_joints: dict[int, list[int]] = {}
+    for joint_idx in range(joint_count):
+        parent = int(joint_parent[joint_idx])
+        child = int(joint_child[joint_idx])
+        anchor = child if child >= 0 else parent
+        if anchor < 0:
+            continue
+        group_joints.setdefault(find(anchor), []).append(joint_idx)
+
+    return [(bodies, group_joints.get(group_root, [])) for group_root, bodies in sorted(group_bodies.items())]
+
+
 def build_rigid_articulation_sparse_layout(
     model, device: wp.context.Devicelike
 ) -> RigidArticulationSparseLayout | None:
-    """Build the static articulation sparse layout from Newton articulation ranges."""
+    """Build the static articulation sparse layout from joint connectivity."""
 
     if model.body_count == 0:
         return None
 
     with wp.ScopedDevice("cpu"):
-        articulation_start = np.asarray(model.articulation_start.to("cpu").numpy(), dtype=np.int32)
         joint_parent = np.asarray(model.joint_parent.to("cpu").numpy(), dtype=np.int32)
         joint_child = np.asarray(model.joint_child.to("cpu").numpy(), dtype=np.int32)
 
@@ -106,31 +150,8 @@ def build_rigid_articulation_sparse_layout(
 
     body_articulation_sparse_host = np.full((model.body_count,), -1, dtype=np.int32)
     body_articulation_local_host = np.full((model.body_count,), -1, dtype=np.int32)
-    body_seen = np.zeros((model.body_count,), dtype=bool)
 
-    articulation_groups: list[tuple[list[int], list[int]]] = []
-    for articulation_id in range(model.articulation_count):
-        joint_start = int(articulation_start[articulation_id])
-        joint_end = int(articulation_start[articulation_id + 1])
-        joints = list(range(joint_start, joint_end))
-
-        bodies: list[int] = []
-        for joint_idx in joints:
-            parent = int(joint_parent[joint_idx])
-            child = int(joint_child[joint_idx])
-            if parent >= 0 and parent not in bodies:
-                bodies.append(parent)
-            if child >= 0 and child not in bodies:
-                bodies.append(child)
-
-        if bodies:
-            articulation_groups.append((bodies, joints))
-            for body in bodies:
-                body_seen[body] = True
-
-    for body in range(model.body_count):
-        if not body_seen[body]:
-            articulation_groups.append(([body], []))
+    articulation_groups = _connected_body_groups(model.body_count, joint_parent, joint_child)
 
     for articulation_sparse, (bodies, joints) in enumerate(articulation_groups):
         local_index = {body: i for i, body in enumerate(bodies)}
