@@ -16,7 +16,7 @@ from ..geometry.contact_match import ContactMatcher
 from ..geometry.contact_sort import ContactSorter
 from ..geometry.differentiable_contacts import launch_differentiable_contact_augment
 from ..geometry.flags import ShapeFlags
-from ..geometry.kernels import create_soft_contacts
+from ..geometry.kernels import create_elastic_shape_contacts, create_soft_contacts
 from ..geometry.narrow_phase import NarrowPhase
 from ..geometry.sdf_hydroelastic import HydroelasticSDF
 from ..geometry.support_function import (
@@ -1099,6 +1099,64 @@ class CollisionPipeline:
             writer_data=writer_data,
             device=self.device,
         )
+
+        if (
+            getattr(model, "elastic_shape_count", 0) > 0
+            and getattr(model, "elastic_shape_vertex_total_count", 0) > 0
+            and self.shape_pairs_max > 0
+        ):
+            wp.launch(
+                kernel=create_elastic_shape_contacts,
+                dim=self.shape_pairs_max * model.elastic_shape_vertex_total_count,
+                inputs=[
+                    state.body_q,
+                    state.joint_q,
+                    model.joint_q_start,
+                    model.body_elastic_index,
+                    model.elastic_joint,
+                    model.elastic_mode_count,
+                    model.elastic_max_mode_count,
+                    model.elastic_shape_count,
+                    model.elastic_shape_shape,
+                    model.elastic_shape_body,
+                    model.elastic_shape_vertex_start,
+                    model.elastic_shape_vertex_count,
+                    model.elastic_shape_vertex_local,
+                    model.elastic_shape_vertex_phi,
+                    model.elastic_shape_vertex_total_count,
+                    self.broad_phase_shape_pairs,
+                    self.broad_phase_pair_count,
+                    model.shape_transform,
+                    model.shape_body,
+                    model.shape_type,
+                    model.shape_scale,
+                    model.shape_source_ptr,
+                    model.shape_world,
+                    model.shape_flags,
+                    model.shape_margin,
+                    model.shape_gap,
+                    model.shape_heightfield_index,
+                    model.heightfield_data,
+                    model.heightfield_elevations,
+                    contacts.rigid_contact_max,
+                ],
+                outputs=[
+                    contacts.rigid_contact_count,
+                    contacts.rigid_contact_shape0,
+                    contacts.rigid_contact_shape1,
+                    contacts.rigid_contact_point0,
+                    contacts.rigid_contact_point1,
+                    contacts.rigid_contact_offset0,
+                    contacts.rigid_contact_offset1,
+                    contacts.rigid_contact_normal,
+                    contacts.rigid_contact_margin0,
+                    contacts.rigid_contact_margin1,
+                    contacts.rigid_contact_tids,
+                    contacts.rigid_contact_elastic_sample0,
+                    contacts.rigid_contact_elastic_sample1,
+                ],
+                device=self.device,
+            )
 
         # Match contacts against previous frame before sorting.
         if self._contact_matcher is not None:
