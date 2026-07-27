@@ -8,7 +8,11 @@ import warp as wp
 from newton._src.core.types import MAXVAL
 from newton._src.math import quat_velocity
 from newton._src.sim import JointType
-from newton._src.solvers.vbd.rigid_vbd_kernels import compute_kappa_and_jacobian, compute_kappa_dot
+from newton._src.solvers.vbd.rigid_vbd_kernels import (
+    compute_kappa_and_jacobian,
+    compute_kappa_dot,
+    eval_elastic_endpoint_xform,
+)
 
 wp.set_module_options({"enable_backward": False})
 
@@ -1433,6 +1437,17 @@ def assemble_articulation_joints_scalar(
     joint_C0_ang: wp.array[wp.vec3],
     joint_is_hard: wp.array[wp.int32],
     avbd_alpha: float,
+    body_elastic_index: wp.array[wp.int32],
+    elastic_joint: wp.array[wp.int32],
+    elastic_mode_count: wp.array[wp.int32],
+    joint_parent_elastic_endpoint: wp.array[wp.int32],
+    joint_child_elastic_endpoint: wp.array[wp.int32],
+    elastic_endpoint_phi: wp.array[wp.vec3],
+    elastic_endpoint_psi: wp.array[wp.vec3],
+    elastic_max_mode_count: int,
+    joint_q: wp.array[float],
+    joint_q_prev: wp.array[float],
+    joint_q_start: wp.array[int],
     values_scalar: wp.array[float],
     rhs_scalar: wp.array[float],
 ):
@@ -1466,29 +1481,93 @@ def assemble_articulation_joints_scalar(
     child_pose = body_q[child]
     child_prev_pose = body_q_prev[child]
     child_rest_pose = body_q_rest[child]
-    X_c = joint_X_c[joint]
+    X_c_rest = joint_X_c[joint]
+    X_c = eval_elastic_endpoint_xform(
+        joint,
+        child,
+        False,
+        X_c_rest,
+        body_elastic_index,
+        elastic_joint,
+        elastic_mode_count,
+        joint_q,
+        joint_q_start,
+        joint_parent_elastic_endpoint,
+        joint_child_elastic_endpoint,
+        elastic_endpoint_phi,
+        elastic_endpoint_psi,
+        elastic_max_mode_count,
+    )
+    X_c_prev = eval_elastic_endpoint_xform(
+        joint,
+        child,
+        False,
+        X_c_rest,
+        body_elastic_index,
+        elastic_joint,
+        elastic_mode_count,
+        joint_q_prev,
+        joint_q_start,
+        joint_parent_elastic_endpoint,
+        joint_child_elastic_endpoint,
+        elastic_endpoint_phi,
+        elastic_endpoint_psi,
+        elastic_max_mode_count,
+    )
     child_anchor = wp.transform_point(child_pose, wp.transform_get_translation(X_c))
-    child_anchor_prev = wp.transform_point(child_prev_pose, wp.transform_get_translation(X_c))
+    child_anchor_prev = wp.transform_point(child_prev_pose, wp.transform_get_translation(X_c_prev))
     child_anchor_q = wp.mul(wp.transform_get_rotation(child_pose), wp.transform_get_rotation(X_c))
-    child_anchor_q_prev = wp.mul(wp.transform_get_rotation(child_prev_pose), wp.transform_get_rotation(X_c))
-    child_rest_q = wp.mul(wp.transform_get_rotation(child_rest_pose), wp.transform_get_rotation(X_c))
+    child_anchor_q_prev = wp.mul(wp.transform_get_rotation(child_prev_pose), wp.transform_get_rotation(X_c_prev))
+    child_rest_q = wp.mul(wp.transform_get_rotation(child_rest_pose), wp.transform_get_rotation(X_c_rest))
 
-    X_p = joint_X_p[joint]
+    X_p_rest = joint_X_p[joint]
+    X_p = eval_elastic_endpoint_xform(
+        joint,
+        parent,
+        True,
+        X_p_rest,
+        body_elastic_index,
+        elastic_joint,
+        elastic_mode_count,
+        joint_q,
+        joint_q_start,
+        joint_parent_elastic_endpoint,
+        joint_child_elastic_endpoint,
+        elastic_endpoint_phi,
+        elastic_endpoint_psi,
+        elastic_max_mode_count,
+    )
+    X_p_prev = eval_elastic_endpoint_xform(
+        joint,
+        parent,
+        True,
+        X_p_rest,
+        body_elastic_index,
+        elastic_joint,
+        elastic_mode_count,
+        joint_q_prev,
+        joint_q_start,
+        joint_parent_elastic_endpoint,
+        joint_child_elastic_endpoint,
+        elastic_endpoint_phi,
+        elastic_endpoint_psi,
+        elastic_max_mode_count,
+    )
     if parent >= 0:
         parent_pose = body_q[parent]
         parent_prev_pose = body_q_prev[parent]
         parent_rest_pose = body_q_rest[parent]
         parent_anchor = wp.transform_point(parent_pose, wp.transform_get_translation(X_p))
-        parent_anchor_prev = wp.transform_point(parent_prev_pose, wp.transform_get_translation(X_p))
+        parent_anchor_prev = wp.transform_point(parent_prev_pose, wp.transform_get_translation(X_p_prev))
         parent_anchor_q = wp.mul(wp.transform_get_rotation(parent_pose), wp.transform_get_rotation(X_p))
-        parent_anchor_q_prev = wp.mul(wp.transform_get_rotation(parent_prev_pose), wp.transform_get_rotation(X_p))
-        parent_rest_q = wp.mul(wp.transform_get_rotation(parent_rest_pose), wp.transform_get_rotation(X_p))
+        parent_anchor_q_prev = wp.mul(wp.transform_get_rotation(parent_prev_pose), wp.transform_get_rotation(X_p_prev))
+        parent_rest_q = wp.mul(wp.transform_get_rotation(parent_rest_pose), wp.transform_get_rotation(X_p_rest))
     else:
         parent_anchor = wp.transform_get_translation(X_p)
-        parent_anchor_prev = parent_anchor
+        parent_anchor_prev = wp.transform_get_translation(X_p_prev)
         parent_anchor_q = wp.transform_get_rotation(X_p)
-        parent_anchor_q_prev = parent_anchor_q
-        parent_rest_q = parent_anchor_q
+        parent_anchor_q_prev = wp.transform_get_rotation(X_p_prev)
+        parent_rest_q = wp.transform_get_rotation(X_p_rest)
 
     c_start = joint_constraint_start[joint]
     qd_start = joint_qd_start[joint]
@@ -2116,6 +2195,17 @@ def solve_articulation_sparse_serial(
     joint_C0_ang: wp.array[wp.vec3],
     joint_is_hard: wp.array[wp.int32],
     avbd_alpha: float,
+    body_elastic_index: wp.array[wp.int32],
+    elastic_joint: wp.array[wp.int32],
+    elastic_mode_count: wp.array[wp.int32],
+    joint_parent_elastic_endpoint: wp.array[wp.int32],
+    joint_child_elastic_endpoint: wp.array[wp.int32],
+    elastic_endpoint_phi: wp.array[wp.vec3],
+    elastic_endpoint_psi: wp.array[wp.vec3],
+    elastic_max_mode_count: int,
+    joint_q: wp.array[float],
+    joint_q_prev: wp.array[float],
+    joint_q_start: wp.array[int],
     update_relaxation: float,
     threads_per_articulation: int,
     skip_body_diagonal: bool,
@@ -2190,28 +2280,94 @@ def solve_articulation_sparse_serial(
         child_pose = body_q[child]
         child_prev_pose = body_q_prev[child]
         child_rest_pose = body_q_rest[child]
-        X_c = joint_X_c[joint]
+        X_c_rest = joint_X_c[joint]
+        X_c = eval_elastic_endpoint_xform(
+            joint,
+            child,
+            False,
+            X_c_rest,
+            body_elastic_index,
+            elastic_joint,
+            elastic_mode_count,
+            joint_q,
+            joint_q_start,
+            joint_parent_elastic_endpoint,
+            joint_child_elastic_endpoint,
+            elastic_endpoint_phi,
+            elastic_endpoint_psi,
+            elastic_max_mode_count,
+        )
+        X_c_prev = eval_elastic_endpoint_xform(
+            joint,
+            child,
+            False,
+            X_c_rest,
+            body_elastic_index,
+            elastic_joint,
+            elastic_mode_count,
+            joint_q_prev,
+            joint_q_start,
+            joint_parent_elastic_endpoint,
+            joint_child_elastic_endpoint,
+            elastic_endpoint_phi,
+            elastic_endpoint_psi,
+            elastic_max_mode_count,
+        )
         child_anchor = wp.transform_point(child_pose, wp.transform_get_translation(X_c))
-        child_anchor_prev = wp.transform_point(child_prev_pose, wp.transform_get_translation(X_c))
+        child_anchor_prev = wp.transform_point(child_prev_pose, wp.transform_get_translation(X_c_prev))
         child_anchor_q = wp.mul(wp.transform_get_rotation(child_pose), wp.transform_get_rotation(X_c))
-        child_anchor_q_prev = wp.mul(wp.transform_get_rotation(child_prev_pose), wp.transform_get_rotation(X_c))
-        child_rest_q = wp.mul(wp.transform_get_rotation(child_rest_pose), wp.transform_get_rotation(X_c))
+        child_anchor_q_prev = wp.mul(wp.transform_get_rotation(child_prev_pose), wp.transform_get_rotation(X_c_prev))
+        child_rest_q = wp.mul(wp.transform_get_rotation(child_rest_pose), wp.transform_get_rotation(X_c_rest))
 
-        X_p = joint_X_p[joint]
+        X_p_rest = joint_X_p[joint]
+        X_p = eval_elastic_endpoint_xform(
+            joint,
+            parent,
+            True,
+            X_p_rest,
+            body_elastic_index,
+            elastic_joint,
+            elastic_mode_count,
+            joint_q,
+            joint_q_start,
+            joint_parent_elastic_endpoint,
+            joint_child_elastic_endpoint,
+            elastic_endpoint_phi,
+            elastic_endpoint_psi,
+            elastic_max_mode_count,
+        )
+        X_p_prev = eval_elastic_endpoint_xform(
+            joint,
+            parent,
+            True,
+            X_p_rest,
+            body_elastic_index,
+            elastic_joint,
+            elastic_mode_count,
+            joint_q_prev,
+            joint_q_start,
+            joint_parent_elastic_endpoint,
+            joint_child_elastic_endpoint,
+            elastic_endpoint_phi,
+            elastic_endpoint_psi,
+            elastic_max_mode_count,
+        )
         if parent >= 0:
             parent_pose = body_q[parent]
             parent_prev_pose = body_q_prev[parent]
             parent_rest_pose = body_q_rest[parent]
             parent_anchor = wp.transform_point(parent_pose, wp.transform_get_translation(X_p))
-            parent_anchor_prev = wp.transform_point(parent_prev_pose, wp.transform_get_translation(X_p))
+            parent_anchor_prev = wp.transform_point(parent_prev_pose, wp.transform_get_translation(X_p_prev))
             parent_anchor_q = wp.mul(wp.transform_get_rotation(parent_pose), wp.transform_get_rotation(X_p))
-            parent_anchor_q_prev = wp.mul(wp.transform_get_rotation(parent_prev_pose), wp.transform_get_rotation(X_p))
-            parent_rest_q = wp.mul(wp.transform_get_rotation(parent_rest_pose), wp.transform_get_rotation(X_p))
+            parent_anchor_q_prev = wp.mul(
+                wp.transform_get_rotation(parent_prev_pose), wp.transform_get_rotation(X_p_prev)
+            )
+            parent_rest_q = wp.mul(wp.transform_get_rotation(parent_rest_pose), wp.transform_get_rotation(X_p_rest))
         else:
             parent_anchor = wp.transform_get_translation(X_p)
-            parent_anchor_prev = parent_anchor
+            parent_anchor_prev = wp.transform_get_translation(X_p_prev)
             parent_anchor_q = wp.transform_get_rotation(X_p)
-            parent_anchor_q_prev = parent_anchor_q
+            parent_anchor_q_prev = wp.transform_get_rotation(X_p_prev)
             parent_rest_q = parent_anchor_q
 
         c_start = joint_constraint_start[joint]

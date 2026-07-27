@@ -9,7 +9,6 @@ Usage:
     python reports/vbd_sparse_articulation/view_humanoid.py --robot h1 --mode block_sparse_joints --iterations 1
 """
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -17,11 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import numpy as np
 import warp as wp
+from bench_vbd_humanoid_contact import build_humanoid, solver_stiffness_kwargs
 
 import newton
 import newton.examples
-from bench_vbd_humanoid_contact import build_humanoid, solver_stiffness_kwargs
-
 
 _RENDER_FPS = 120
 _SUBSTEPS = {"h1": 2, "g1": 3}
