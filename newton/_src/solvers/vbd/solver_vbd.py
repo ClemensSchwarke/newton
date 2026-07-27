@@ -74,6 +74,7 @@ from .rigid_vbd_kernels import (
     check_contact_overflow,
     compute_cable_dahl_parameters,
     compute_rigid_contact_forces,
+    eval_body_body_contact_forces,
     forward_step_rigid_bodies,
     init_body_body_contact_materials,
     init_body_body_contacts_avbd,
@@ -879,6 +880,64 @@ class SolverVBD(SolverBase):
     def notify_model_changed(self, flags: ModelFlags | int) -> None:
         if flags & (ModelFlags.BODY_PROPERTIES | ModelFlags.BODY_INERTIAL_PROPERTIES):
             self._refresh_kinematic_state()
+
+    def update_contacts(self, contacts: Contacts, state: State | None = None) -> None:
+        """Populate ``contacts.force`` with the body-body contact wrenches of the last :meth:`step`.
+
+        Body-particle contacts are not reported. See
+        :func:`~newton._src.solvers.vbd.rigid_vbd_kernels.eval_body_body_contact_forces` for the
+        reported quantity; note that its magnitude is not calibrated to the physical contact force.
+
+        Args:
+            contacts: :class:`Contacts` whose ``force`` buffer is written. Must be the instance
+                passed to the preceding :meth:`step` and created with ``"force"`` requested.
+            state: State supplying ``body_q``; defaults to the model's body transforms.
+
+        Raises:
+            ValueError: If ``contacts.force`` is not allocated, or the contact capacity differs
+                from the one used in the last :meth:`step`.
+        """
+        if contacts.force is None:
+            raise ValueError(
+                "contacts.force is not allocated. Call model.request_contact_attributes('force') "
+                "before creating the Contacts object."
+            )
+
+        contacts.force.zero_()
+
+        if self.integrate_with_external_rigid_solver or self.model.body_count == 0:
+            return
+        if contacts.rigid_contact_max == 0:
+            return
+        if contacts.rigid_contact_max != len(self.body_body_contact_penalty_k):
+            raise ValueError(
+                f"Contacts capacity mismatch: update_contacts() received rigid_contact_max="
+                f"{contacts.rigid_contact_max}, but step() used {len(self.body_body_contact_penalty_k)}. "
+                f"Pass the same Contacts instance to both step() and update_contacts()."
+            )
+
+        wp.launch(
+            kernel=eval_body_body_contact_forces,
+            dim=contacts.rigid_contact_max,
+            inputs=[
+                contacts.rigid_contact_count,
+                contacts.rigid_contact_shape0,
+                contacts.rigid_contact_shape1,
+                contacts.rigid_contact_point0,
+                contacts.rigid_contact_point1,
+                contacts.rigid_contact_normal,
+                contacts.rigid_contact_margin0,
+                contacts.rigid_contact_margin1,
+                self.model.shape_body,
+                state.body_q if state is not None else self.model.body_q,
+                self.model.body_com,
+                self.body_body_contact_penalty_k,
+                self.body_body_contact_lambda,
+                self.rigid_contact_hard,
+            ],
+            outputs=[contacts.force],
+            device=self.device,
+        )
 
     # =====================================================
     # Initialization Helper Methods

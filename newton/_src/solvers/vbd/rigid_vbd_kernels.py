@@ -4058,3 +4058,77 @@ def update_cable_dahl_state(
     joint_sigma_prev[j] = sigma_final_out
     joint_kappa_prev[j] = kappa_final
     joint_dkappa_prev[j] = d_kappa_out
+
+
+@wp.kernel(enable_backward=False)
+def eval_body_body_contact_forces(
+    rigid_contact_count: wp.array[int],
+    rigid_contact_shape0: wp.array[int],
+    rigid_contact_shape1: wp.array[int],
+    rigid_contact_point0: wp.array[wp.vec3],
+    rigid_contact_point1: wp.array[wp.vec3],
+    rigid_contact_normal: wp.array[wp.vec3],
+    rigid_contact_margin0: wp.array[float],
+    rigid_contact_margin1: wp.array[float],
+    shape_body: wp.array[int],
+    body_q: wp.array[wp.transform],
+    body_com: wp.array[wp.vec3],
+    contact_penalty_k: wp.array[float],
+    contact_lambda: wp.array[wp.vec3],
+    hard_contacts: int,
+    # Output
+    contact_force: wp.array[wp.spatial_vector],
+):
+    """Report the body-body contact wrench in the :attr:`newton.Contacts.force` layout.
+
+    Writes the wrench exerted on body0 by body1 in world frame: linear force in the first
+    three entries, torque about body0's COM in the last three.
+
+    In hard mode the augmented-Lagrangian dual is the constraint force, so it is reported
+    directly. The penalty term ``k * C_eff`` is deliberately excluded: AVBD stabilization
+    leaves it non-zero in steady contact (``C_eff -> (1 - alpha) * C_n``), so including it
+    adds a spurious ``k * (1 - alpha) * margin`` per contact. Soft mode carries no dual, so
+    the penalty is the only available estimate there.
+
+    .. note::
+        The dual is warm-started across steps and accumulates, so the reported magnitude is
+        not calibrated to the physical contact force. It is signed and monotone in load,
+        which suffices for contact detection, but should not be used as a force measurement.
+    """
+    idx = wp.tid()
+    if idx >= rigid_contact_count[0]:
+        return
+
+    shape_id_0 = rigid_contact_shape0[idx]
+    shape_id_1 = rigid_contact_shape1[idx]
+    if shape_id_0 < 0 or shape_id_1 < 0:
+        return
+
+    b0 = shape_body[shape_id_0]
+    b1 = shape_body[shape_id_1]
+    if b0 < 0 and b1 < 0:
+        return
+
+    contact_normal = rigid_contact_normal[idx]
+    cp0_local = rigid_contact_point0[idx]
+    cp1_local = rigid_contact_point1[idx]
+    cp0_world = wp.transform_point(body_q[b0], cp0_local) if b0 >= 0 else cp0_local
+    cp1_world = wp.transform_point(body_q[b1], cp1_local) if b1 >= 0 else cp1_local
+
+    force_0 = wp.vec3(0.0)
+    if hard_contacts == 1:
+        lam_vec = contact_lambda[idx]
+        if wp.dot(lam_vec, contact_normal) <= 0.0:
+            return
+        force_0 = -lam_vec
+    else:
+        C_n = -contact_surface_separation(
+            cp0_world, cp1_world, contact_normal, rigid_contact_margin0[idx], rigid_contact_margin1[idx]
+        )
+        if C_n <= _SMALL_LENGTH_EPS:
+            return
+        force_0 = -(contact_penalty_k[idx] * C_n) * contact_normal
+
+    # Torque is referenced to body0's COM; a static body0 carries no reported moment.
+    com_0 = wp.transform_point(body_q[b0], body_com[b0]) if b0 >= 0 else cp0_world
+    contact_force[idx] = wp.spatial_vector(force_0, wp.cross(cp0_world - com_0, force_0))
