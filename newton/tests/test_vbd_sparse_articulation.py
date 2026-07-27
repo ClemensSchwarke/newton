@@ -735,6 +735,33 @@ class TestVBDSparseArticulation(unittest.TestCase):
         self.assertEqual(sorted(bodies), list(range(model.body_count)))
         self.assertEqual(int(layout.articulation_joint_offsets.numpy()[-1]), model.joint_count)
 
+    def test_sparse_layout_merges_articulations_joined_by_a_joint(self):
+        builder = newton.ModelBuilder(gravity=0.0)
+        inertia = wp.mat33(np.eye(3, dtype=np.float32))
+        link_a = builder.add_link(xform=wp.transform(wp.vec3(0.0, 0.0, 0.0)), mass=1.0, inertia=inertia)
+        link_b = builder.add_link(xform=wp.transform(wp.vec3(1.0, 0.0, 0.0)), mass=1.0, inertia=inertia)
+        joint_a = builder.add_joint_fixed(parent=-1, child=link_a)
+        builder.add_articulation([joint_a])
+        joint_b = builder.add_joint_fixed(parent=-1, child=link_b)
+        builder.add_articulation([joint_b])
+        # This joint spans the two articulations, which Model.articulation_start cannot express.
+        builder.add_joint_fixed(parent=link_a, child=link_b)
+        builder.color()
+        model = builder.finalize(device="cpu")
+
+        self.assertEqual(model.articulation_count, 2)
+
+        solver = newton.solvers.SolverVBD(model, iterations=1, rigid_articulation_solve="block_sparse_joints")
+        layout = solver.rigid_articulation_sparse_layout
+        self.assertIsNotNone(layout)
+
+        bodies = layout.articulation_bodies.numpy().tolist()
+        self.assertEqual(sorted(bodies), sorted(set(bodies)))
+        self.assertEqual(sorted(bodies), list(range(model.body_count)))
+        # The linking joint merges both articulations into a single solver group.
+        self.assertEqual(layout.articulation_count, 1)
+        self.assertEqual(int(layout.articulation_joint_offsets.numpy()[-1]), model.joint_count)
+
     def test_sparse_revolute_projector_uses_parent_frame(self):
         axis = np.array([0.2, -0.4, 0.7], dtype=np.float32)
         axis /= np.linalg.norm(axis)

@@ -794,7 +794,7 @@ class SolverVBD(SolverBase):
             # Per-body contact lists (CSR-like: per-body counts + flat index array).
             # Tight: pre_alloc = 0 when the contact source is absent (no shapes / no particles).
             bb_pre_alloc = rigid_body_contact_buffer_size if model.shape_count > 0 else 0
-            if bb_pre_alloc > 0 and getattr(model, "elastic_shape_count", 0) > 0:
+            if bb_pre_alloc > 0 and model.elastic_shape_count > 0:
                 bb_pre_alloc = max(bb_pre_alloc, self._max_elastic_body_vertex_count(model))
             self.body_body_contact_buffer_pre_alloc = bb_pre_alloc
             self.body_body_contact_counts = wp.zeros(model.body_count, dtype=wp.int32, device=self.device)
@@ -885,8 +885,8 @@ class SolverVBD(SolverBase):
         self._empty_body_q = wp.empty(0, dtype=wp.transform, device=self.device)
 
         self.elastic_contact_count_zero = wp.zeros(1, dtype=int, device=self.device)
-        elastic_body_count = int(getattr(model, "elastic_body_count", 0) or 0)
-        elastic_block_width = int(getattr(model, "elastic_max_mode_count", 0) or 0)
+        elastic_body_count = int(model.elastic_body_count)
+        elastic_block_width = int(model.elastic_max_mode_count)
         elastic_block_vec_count = elastic_body_count * elastic_block_width
         elastic_block_mat_count = elastic_block_vec_count * elastic_block_width
         self.elastic_mode_block_grad = wp.empty(elastic_block_vec_count, dtype=float, device=self.device)
@@ -1867,7 +1867,7 @@ class SolverVBD(SolverBase):
     def _initialize_elastic_bodies(self, state_in: State, state_out: State, control: Control, dt: float):
         """Synchronize reduced elastic owner joints and integrate modal coordinates."""
         model = self.model
-        if getattr(model, "elastic_body_count", 0) == 0:
+        if model.elastic_body_count == 0:
             return
 
         self.elastic_mode_block_initial_residual_norm.zero_()
@@ -1924,7 +1924,7 @@ class SolverVBD(SolverBase):
     def _finalize_elastic_bodies(self, state_out: State):
         """Write solved floating-frame body poses back to reduced elastic owner joints."""
         model = self.model
-        if getattr(model, "elastic_body_count", 0) == 0:
+        if model.elastic_body_count == 0:
             return
 
         wp.launch(
@@ -1945,21 +1945,50 @@ class SolverVBD(SolverBase):
             device=self.device,
         )
 
+    def _accumulate_elastic_frame_coupling(self, state_in: State, state_out: State, dt: float):
+        """Apply the reduced elastic mode-to-frame reaction into the rigid body force accumulators."""
+        model = self.model
+        if model.elastic_body_count == 0:
+            return
+
+        wp.launch(
+            kernel=accumulate_elastic_frame_coupling,
+            dim=model.elastic_body_count,
+            inputs=[
+                dt,
+                model.elastic_body,
+                model.elastic_joint,
+                model.elastic_mode_start,
+                model.elastic_mode_count,
+                model.elastic_mode_coupling_linear,
+                model.elastic_mode_coupling_angular,
+                state_in.body_q,
+                self.body_q_prev,
+                model.body_com,
+                model.joint_q_start,
+                model.joint_qd_start,
+                state_out.joint_q,
+                state_in.joint_q,
+                state_in.joint_qd,
+            ],
+            outputs=[
+                self.body_forces,
+                self.body_torques,
+            ],
+            device=self.device,
+        )
+
     def _solve_elastic_body_iteration(
         self, state_in: State, state_out: State, control: Control, contacts: Contacts | None, dt: float
     ):
         """Update reduced elastic modes from all modal sources in one block solve."""
         model = self.model
-        if getattr(model, "elastic_body_count", 0) == 0:
+        if model.elastic_body_count == 0:
             return
 
         rigid_contact_max = 0
         rigid_contact_count = self.elastic_contact_count_zero
-        if (
-            contacts is not None
-            and getattr(model, "elastic_shape_vertex_total_count", 0) > 0
-            and contacts.rigid_contact_max > 0
-        ):
+        if contacts is not None and model.elastic_shape_vertex_total_count > 0 and contacts.rigid_contact_max > 0:
             rigid_contact_max = contacts.rigid_contact_max
             rigid_contact_count = contacts.rigid_contact_count
 
@@ -2953,33 +2982,7 @@ class SolverVBD(SolverBase):
         self.body_hessian_al.zero_()
         self.body_hessian_ll.zero_()
 
-        if getattr(model, "elastic_body_count", 0) > 0:
-            wp.launch(
-                kernel=accumulate_elastic_frame_coupling,
-                dim=model.elastic_body_count,
-                inputs=[
-                    dt,
-                    model.elastic_body,
-                    model.elastic_joint,
-                    model.elastic_mode_start,
-                    model.elastic_mode_count,
-                    model.elastic_mode_coupling_linear,
-                    model.elastic_mode_coupling_angular,
-                    state_in.body_q,
-                    self.body_q_prev,
-                    model.body_com,
-                    model.joint_q_start,
-                    model.joint_qd_start,
-                    state_out.joint_q,
-                    state_in.joint_q,
-                    state_in.joint_qd,
-                ],
-                outputs=[
-                    self.body_forces,
-                    self.body_torques,
-                ],
-                device=self.device,
-            )
+        self._accumulate_elastic_frame_coupling(state_in, state_out, dt)
 
         body_color_groups = model.body_color_groups
 
@@ -3282,33 +3285,7 @@ class SolverVBD(SolverBase):
         self.body_hessian_al.zero_()
         self.body_hessian_ll.zero_()
 
-        if getattr(model, "elastic_body_count", 0) > 0:
-            wp.launch(
-                kernel=accumulate_elastic_frame_coupling,
-                dim=model.elastic_body_count,
-                inputs=[
-                    dt,
-                    model.elastic_body,
-                    model.elastic_joint,
-                    model.elastic_mode_start,
-                    model.elastic_mode_count,
-                    model.elastic_mode_coupling_linear,
-                    model.elastic_mode_coupling_angular,
-                    state_in.body_q,
-                    self.body_q_prev,
-                    model.body_com,
-                    model.joint_q_start,
-                    model.joint_qd_start,
-                    state_out.joint_q,
-                    state_in.joint_q,
-                    state_in.joint_qd,
-                ],
-                outputs=[
-                    self.body_forces,
-                    self.body_torques,
-                ],
-                device=self.device,
-            )
+        self._accumulate_elastic_frame_coupling(state_in, state_out, dt)
 
         sparse_body_group = layout.articulation_bodies
         sparse_body_dim = layout.articulation_body_count * _NUM_CONTACT_THREADS_PER_BODY
@@ -3832,7 +3809,7 @@ class SolverVBD(SolverBase):
         # Type narrowing: remaining path requires a valid Contacts instance.
         assert contacts is not None
 
-        if joint_q is None and getattr(self.model, "elastic_body_count", 0) > 0:
+        if joint_q is None and self.model.elastic_body_count > 0:
             raise ValueError(
                 "collect_rigid_contact_forces: joint_q is required when the model has reduced elastic bodies, "
                 "because elastic contact points are evaluated at the deformed surface. Pass the joint "

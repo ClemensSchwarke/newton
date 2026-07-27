@@ -2295,9 +2295,7 @@ def test_vbd_elastic_joint_uses_iteration_consistent_duals(test, device):
         modal_basis=_pure_twist_basis(clamp_local, True, mode_mass=1.0, mode_stiffness=0.0, mode_damping=0.0),
     )
     builder.add_shape_box(beam, hx=0.5, hy=0.05, hz=0.05, cfg=shape_cfg)
-    rigid = builder.add_body(
-        xform=wp.transform(wp.vec3(0.5, 0.0, 0.0), wp.quat_identity()), mass=1.0, inertia=inertia
-    )
+    rigid = builder.add_body(xform=wp.transform(wp.vec3(0.5, 0.0, 0.0), wp.quat_identity()), mass=1.0, inertia=inertia)
     builder.add_joint_fixed(
         parent=rigid,
         child=beam,
