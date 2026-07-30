@@ -2780,6 +2780,92 @@ class ModelBuilder:
                 expected_frequency=Model.AttributeFrequency.ARTICULATION,
             )
 
+    def extend_articulation(self, articulation: int, joints: list[int], allow_closed_loops: bool = False):
+        """Append joints to an existing articulation.
+
+        Use this when joints must be added to an articulation that was already created, for instance
+        when attaching a body to an imported robot. The joints must directly follow the
+        articulation's current range, since an articulation is stored as a contiguous joint span.
+
+        Args:
+            articulation: Index of the articulation to extend.
+            joints: List of joint indices to append. Must be contiguous, monotonically increasing,
+                and start at the articulation's current end.
+            allow_closed_loops: If True, allow the appended joints to share a child body with a joint
+                already in the articulation. This is intended for maximal-coordinate solvers that can
+                assemble loop-closing joints directly.
+
+        Raises:
+            ValueError: If the articulation index is invalid, or the joints are not contiguous with
+                it, already belong to an articulation, or belong to a different world.
+        """
+        if articulation < 0 or articulation >= self.articulation_count:
+            raise ValueError(
+                f"Articulation index {articulation} is out of range. Valid range is 0 to {self.articulation_count - 1}"
+            )
+        if not joints:
+            raise ValueError("Cannot extend an articulation with no joints")
+
+        sorted_joints = sorted(joints)
+        if sorted_joints != joints:
+            raise ValueError(
+                f"Joints must be provided in monotonically increasing order. Got {joints}, expected {sorted_joints}"
+            )
+        for i in range(1, len(sorted_joints)):
+            if sorted_joints[i] != sorted_joints[i - 1] + 1:
+                raise ValueError(
+                    f"Joints must be contiguous. Got indices {sorted_joints}, but there is a gap between "
+                    f"{sorted_joints[i - 1]} and {sorted_joints[i]}."
+                )
+
+        current_end = self.articulation_end[articulation]
+        if sorted_joints[0] != current_end:
+            raise ValueError(
+                f"Joints must directly follow articulation {articulation} "
+                f"('{self.articulation_label[articulation]}'), which ends at joint {current_end}, but the first "
+                f"joint given is {sorted_joints[0]}. Create the joints immediately after the articulation's "
+                f"existing joints."
+            )
+
+        for joint_idx in joints:
+            if joint_idx >= len(self.joint_type):
+                raise ValueError(
+                    f"Joint index {joint_idx} is out of range. Valid range is 0 to {len(self.joint_type) - 1}"
+                )
+            if self.joint_articulation[joint_idx] >= 0:
+                existing_art = self.joint_articulation[joint_idx]
+                raise ValueError(
+                    f"Joint {joint_idx} ('{self.joint_label[joint_idx]}') already belongs to articulation "
+                    f"{existing_art} ('{self.articulation_label[existing_art]}'). Each joint can only belong to "
+                    f"one articulation."
+                )
+            if self.joint_world[joint_idx] != self.articulation_world[articulation]:
+                raise ValueError(
+                    f"Joint {joint_idx} belongs to world {self.joint_world[joint_idx]}, but articulation "
+                    f"{articulation} belongs to world {self.articulation_world[articulation]}."
+                )
+
+        if not allow_closed_loops:
+            child_to_parent = {}
+            for joint_idx in range(self.articulation_start[articulation], current_end):
+                child_to_parent[self.joint_child[joint_idx]] = self.joint_parent[joint_idx]
+            for joint_idx in joints:
+                child = self.joint_child[joint_idx]
+                parent = self.joint_parent[joint_idx]
+                if child in child_to_parent and child_to_parent[child] != parent:
+                    raise ValueError(
+                        f"Body {child} has multiple parents in this articulation: {child_to_parent[child]} and "
+                        f"{parent}. This creates an invalid tree structure. Pass allow_closed_loops=True only for "
+                        f"solvers that support loop-closing joints in an articulation."
+                    )
+                child_to_parent[child] = parent
+
+        self._validate_kinematic_articulation_joints(joints)
+
+        self.articulation_end[articulation] = sorted_joints[-1] + 1
+        for joint_idx in joints:
+            self.joint_articulation[joint_idx] = articulation
+
     # region importers
     def add_urdf(
         self,
@@ -3633,7 +3719,11 @@ class ModelBuilder:
             self.joint_target_q.extend(builder.joint_target_q)
             if xform is not None:
                 for i in range(len(builder.joint_X_p)):
-                    if builder.joint_type[i] == JointType.FREE:
+                    # ELASTIC owner joints store a world floating frame in their leading 7
+                    # coordinates, exactly like FREE. Solvers read those coordinates directly, so
+                    # the offset has to land on the coordinates rather than on the joint's parent
+                    # anchor, or every replicated elastic body keeps the source builder's pose.
+                    if builder.joint_type[i] in (JointType.FREE, JointType.ELASTIC):
                         qi = builder.joint_q_start[i]
                         xform_prev = wp.transform(*builder.joint_q[qi : qi + 7])
                         tf = transform_mul(xform, xform_prev)

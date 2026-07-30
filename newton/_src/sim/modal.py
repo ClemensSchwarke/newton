@@ -1193,9 +1193,416 @@ class ModalGeneratorBeam:
         raise ValueError(f"Unsupported beam mode type '{mode_type}'")
 
 
+class ModalGeneratorCurvedBeam:
+    """Build sampled linear modes for a curved Euler-Bernoulli beam.
+
+    The beam follows an arbitrary planar centerline, such as the leaf-spring
+    blade centerline traced by an SVG path. The centerline is discretized into
+    two-node 3D beam elements whose local axial axis follows the tangent. The
+    generalized eigenproblem ``K phi = lambda M phi`` is solved on the assembled
+    nodal degrees of freedom, the retained modes are mass-normalized, and a
+    sampled :class:`ModalBasis` is returned. Translational nodal degrees of
+    freedom become the displacement samples ``phi`` and rotational degrees of
+    freedom become the angular samples ``psi``, so joint rotational coupling is
+    taken directly from the element kinematics rather than estimated.
+
+    The centerline is planar; the out-of-plane axis is the cross-section
+    ``width`` direction (the stiff lateral bending axis), while the in-plane
+    normal carries the compliant ``depth`` flex. The rectangular cross-section
+    properties (area, second moments, polar moment) are derived from ``width``
+    and ``depth``.
+
+    The returned basis samples each node and its four cross-section corners, so
+    the sampled displacement field is defined over the blade volume rather than
+    only along the centerline. Corner displacements follow the beam kinematics
+    ``phi_corner = phi_node + psi_node x offset`` and carry no mass.
+
+    Args:
+        centerline: Body-local centerline points [m], shape ``[node_count, 2]``
+            interpreted in ``plane`` or ``[node_count, 3]`` lying in a coordinate
+            plane. Consecutive points define beam elements.
+        width: Cross-section width along the out-of-plane lateral axis [m].
+        depth: Cross-section depth along the in-plane normal [m].
+        plane: Coordinate plane the 2D centerline is embedded in, one of
+            ``"xy"``, ``"yz"`` or ``"xz"``. The remaining axis is the lateral
+            width direction. Ignored for a 3D ``centerline``.
+        mode_count: Number of lowest modes to retain.
+        density: Density [kg/m^3].
+        young_modulus: Young's modulus [Pa].
+        shear_modulus: Shear modulus [Pa]. Defaults to ``young_modulus / 2.6``.
+        boundary: Modal boundary condition, one of ``"clamped-root"`` (fix the
+            first node, the natural choice when the root attaches to a parent),
+            ``"clamped-tip"`` (fix the last node) or ``"free-free"`` (discard the
+            six rigid-body modes).
+        damping_ratio: Modal damping ratio.
+        label: Optional basis label.
+    """
+
+    class Boundary:
+        """Curved-beam boundary names."""
+
+        CLAMPED_ROOT = "clamped-root"
+        CLAMPED_TIP = "clamped-tip"
+        FREE_FREE = "free-free"
+
+    def __init__(
+        self,
+        centerline: Sequence[Sequence[float]] | np.ndarray,
+        width: float,
+        depth: float,
+        plane: str = "yz",
+        mode_count: int = 4,
+        density: float = 1000.0,
+        young_modulus: float = 1.0e6,
+        shear_modulus: float | None = None,
+        boundary: str = "clamped-root",
+        damping_ratio: float = 0.0,
+        label: str | None = None,
+    ):
+        if width <= 0.0 or depth <= 0.0:
+            raise ValueError(f"width and depth must be positive, got {width} and {depth}")
+        self.plane = str(plane)
+        self.node_positions, self.lateral_axis = self._embed_centerline(centerline, self.plane)
+        self.node_count = int(self.node_positions.shape[0])
+        if self.node_count < 2:
+            raise ValueError(f"centerline must have at least two nodes, got {self.node_count}")
+
+        self.width = float(width)
+        self.depth = float(depth)
+        self.density = float(density)
+        self.young_modulus = float(young_modulus)
+        self.shear_modulus = float(shear_modulus) if shear_modulus is not None else self.young_modulus / 2.6
+        self.area = self.width * self.depth
+        self.area_moment_flex = self.width * self.depth**3 / 12.0
+        self.area_moment_lateral = self.depth * self.width**3 / 12.0
+        self.polar_moment = self.area_moment_flex + self.area_moment_lateral
+        self.boundary = str(boundary)
+        self.mode_count = int(mode_count)
+        if self.mode_count < 0:
+            raise ValueError(f"mode_count must be non-negative, got {self.mode_count}")
+        self.damping_ratio = float(damping_ratio)
+        self.label = label
+
+        self.total_mass = 0.0
+        self.center_of_mass = np.zeros(3, dtype=np.float32)
+        self.inertia = np.zeros((3, 3), dtype=np.float32)
+        self.root_local = np.array(self.node_positions[0], dtype=np.float32)
+        self.tip_local = np.array(self.node_positions[-1], dtype=np.float32)
+        self.frequencies = np.zeros(0, dtype=np.float64)
+
+    @staticmethod
+    def _embed_centerline(centerline, plane: str) -> tuple[np.ndarray, np.ndarray]:
+        points = np.asarray(centerline, dtype=np.float64)
+        if points.ndim != 2 or points.shape[1] not in (2, 3):
+            raise ValueError(f"centerline must have shape [node_count, 2] or [node_count, 3], got {points.shape}")
+        if points.shape[1] == 2:
+            axes = {"xy": (0, 1, 2), "yz": (1, 2, 0), "xz": (0, 2, 1)}
+            if plane not in axes:
+                raise ValueError(f"plane must be one of 'xy', 'yz', 'xz', got '{plane}'")
+            first, second, lateral = axes[plane]
+            embedded = np.zeros((points.shape[0], 3), dtype=np.float64)
+            embedded[:, first] = points[:, 0]
+            embedded[:, second] = points[:, 1]
+            lateral_axis = np.zeros(3, dtype=np.float64)
+            lateral_axis[lateral] = 1.0
+            return embedded, lateral_axis
+        spread = points - points.mean(axis=0, keepdims=True)
+        _, _, vt = np.linalg.svd(spread, full_matrices=True)
+        return points, vt[-1]
+
+    def build(self) -> ModalBasis:
+        """Build a sampled curved-beam modal basis."""
+        stiffness, mass = self._assemble()
+        eigenvalues, full_modes = self._solve_modes(stiffness, mass)
+        retained = full_modes.shape[1]
+
+        mode_mass = np.ones(retained, dtype=np.float32)
+        mode_stiffness = np.maximum(eigenvalues, 0.0).astype(np.float32)
+        mode_damping = np.zeros(retained, dtype=np.float32)
+        if self.damping_ratio > 0.0:
+            mode_damping = (2.0 * self.damping_ratio * np.sqrt(np.maximum(eigenvalues, 0.0))).astype(np.float32)
+        self.frequencies = np.sqrt(np.maximum(eigenvalues, 0.0)) / (2.0 * math.pi)
+
+        nodal = full_modes.reshape((self.node_count, 6, retained))
+        nodal_phi = np.transpose(nodal[:, 0:3, :], (0, 2, 1))
+        nodal_psi = np.transpose(nodal[:, 3:6, :], (0, 2, 1))
+        node_mass = self._node_lumped_mass()
+        self._compute_rigid_properties(node_mass)
+
+        sample_points, sample_phi, sample_psi, sample_mass = self._build_samples(nodal_phi, nodal_psi, node_mass)
+
+        return ModalBasis(
+            sample_points=sample_points,
+            sample_phi=sample_phi,
+            sample_psi=sample_psi,
+            sample_mass=sample_mass,
+            mode_mass=mode_mass,
+            mode_stiffness=mode_stiffness,
+            mode_damping=mode_damping,
+            label=self.label,
+        )
+
+    def _element_lengths_tangents(self) -> tuple[np.ndarray, np.ndarray]:
+        segments = np.diff(self.node_positions, axis=0)
+        lengths = np.linalg.norm(segments, axis=1)
+        if np.any(lengths <= 0.0):
+            raise ValueError("centerline contains coincident consecutive nodes")
+        tangents = segments / lengths[:, None]
+        return lengths, tangents
+
+    def _element_transform(self, tangent: np.ndarray) -> np.ndarray:
+        e_x = tangent
+        lateral = self.lateral_axis - np.dot(self.lateral_axis, e_x) * e_x
+        norm = np.linalg.norm(lateral)
+        if norm <= 1.0e-9:
+            raise ValueError("lateral axis is parallel to a beam element; centerline is not planar as expected")
+        e_z = lateral / norm
+        e_y = np.cross(e_z, e_x)
+        rotation = np.stack([e_x, e_y, e_z], axis=1)
+        transform = np.zeros((12, 12), dtype=np.float64)
+        for block in range(4):
+            transform[3 * block : 3 * block + 3, 3 * block : 3 * block + 3] = rotation.T
+        return transform
+
+    _AXIAL_DOFS = (0, 6)
+    _TORSION_DOFS = (3, 9)
+    _BENDING_XY_DOFS = (1, 5, 7, 11)
+    _BENDING_XZ_DOFS = (2, 4, 8, 10)
+
+    @staticmethod
+    def _scatter_block(target: np.ndarray, dofs: Sequence[int], block: np.ndarray) -> None:
+        index = np.asarray(dofs, dtype=np.int64)
+        target[np.ix_(index, index)] = block
+
+    @staticmethod
+    def _negate_rotations(block: np.ndarray) -> np.ndarray:
+        sign = np.diag((1.0, -1.0, 1.0, -1.0))
+        return sign @ block @ sign
+
+    def _bending_stiffness_block(self, length: float, negate_rotations: bool) -> np.ndarray:
+        block = (
+            np.array(
+                [
+                    [12.0, 6.0 * length, -12.0, 6.0 * length],
+                    [6.0 * length, 4.0 * length**2, -6.0 * length, 2.0 * length**2],
+                    [-12.0, -6.0 * length, 12.0, -6.0 * length],
+                    [6.0 * length, 2.0 * length**2, -6.0 * length, 4.0 * length**2],
+                ],
+                dtype=np.float64,
+            )
+            / length**3
+        )
+        return self._negate_rotations(block) if negate_rotations else block
+
+    def _bending_mass_block(self, length: float, negate_rotations: bool) -> np.ndarray:
+        block = (
+            np.array(
+                [
+                    [156.0, 22.0 * length, 54.0, -13.0 * length],
+                    [22.0 * length, 4.0 * length**2, 13.0 * length, -3.0 * length**2],
+                    [54.0, 13.0 * length, 156.0, -22.0 * length],
+                    [-13.0 * length, -3.0 * length**2, -22.0 * length, 4.0 * length**2],
+                ],
+                dtype=np.float64,
+            )
+            / 420.0
+        )
+        return self._negate_rotations(block) if negate_rotations else block
+
+    def _local_stiffness(self, length: float) -> np.ndarray:
+        two_node = np.array([[1.0, -1.0], [-1.0, 1.0]], dtype=np.float64)
+        axial = (self.young_modulus * self.area / length) * two_node
+        torsion = (self.shear_modulus * self.polar_moment / length) * two_node
+        bending_xy = self.young_modulus * self.area_moment_flex * self._bending_stiffness_block(length, False)
+        bending_xz = self.young_modulus * self.area_moment_lateral * self._bending_stiffness_block(length, True)
+
+        k = np.zeros((12, 12), dtype=np.float64)
+        self._scatter_block(k, self._AXIAL_DOFS, axial)
+        self._scatter_block(k, self._TORSION_DOFS, torsion)
+        self._scatter_block(k, self._BENDING_XY_DOFS, bending_xy)
+        self._scatter_block(k, self._BENDING_XZ_DOFS, bending_xz)
+        return k
+
+    def _local_mass(self, length: float) -> np.ndarray:
+        two_node = np.array([[2.0, 1.0], [1.0, 2.0]], dtype=np.float64)
+        translational = self.density * self.area * length
+        axial = (translational / 6.0) * two_node
+        torsion = (self.density * self.polar_moment * length / 6.0) * two_node
+        bending_xy = translational * self._bending_mass_block(length, False)
+        bending_xz = translational * self._bending_mass_block(length, True)
+
+        mass = np.zeros((12, 12), dtype=np.float64)
+        self._scatter_block(mass, self._AXIAL_DOFS, axial)
+        self._scatter_block(mass, self._TORSION_DOFS, torsion)
+        self._scatter_block(mass, self._BENDING_XY_DOFS, bending_xy)
+        self._scatter_block(mass, self._BENDING_XZ_DOFS, bending_xz)
+        return mass
+
+    def _assemble(self) -> tuple[np.ndarray, np.ndarray]:
+        lengths, tangents = self._element_lengths_tangents()
+        dof = 6 * self.node_count
+        stiffness = np.zeros((dof, dof), dtype=np.float64)
+        mass = np.zeros((dof, dof), dtype=np.float64)
+        for element in range(self.node_count - 1):
+            transform = self._element_transform(tangents[element])
+            k_global = transform.T @ self._local_stiffness(lengths[element]) @ transform
+            m_global = transform.T @ self._local_mass(lengths[element]) @ transform
+            start = 6 * element
+            index = np.r_[start : start + 6, start + 6 : start + 12]
+            stiffness[np.ix_(index, index)] += k_global
+            mass[np.ix_(index, index)] += m_global
+        return stiffness, mass
+
+    def _fixed_dofs(self) -> np.ndarray:
+        if self.boundary == self.Boundary.FREE_FREE:
+            return np.zeros(0, dtype=np.int64)
+        if self.boundary == self.Boundary.CLAMPED_ROOT:
+            node = 0
+        elif self.boundary == self.Boundary.CLAMPED_TIP:
+            node = self.node_count - 1
+        else:
+            raise ValueError(f"Unsupported boundary '{self.boundary}'")
+        return np.arange(6 * node, 6 * node + 6, dtype=np.int64)
+
+    def _solve_modes(self, stiffness: np.ndarray, mass: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        dof = 6 * self.node_count
+        free_mask = np.ones(dof, dtype=bool)
+        free_mask[self._fixed_dofs()] = False
+        free = np.nonzero(free_mask)[0]
+
+        mass_free = mass[np.ix_(free, free)]
+        stiffness_free = stiffness[np.ix_(free, free)]
+        chol = np.linalg.cholesky(mass_free)
+        whitened = np.linalg.solve(chol, np.linalg.solve(chol, stiffness_free).T).T
+        whitened = 0.5 * (whitened + whitened.T)
+        eigenvalues, eigenvectors = np.linalg.eigh(whitened)
+        order = np.argsort(eigenvalues)
+        eigenvalues = eigenvalues[order]
+        eigenvectors = eigenvectors[:, order]
+
+        discard = 6 if self.boundary == self.Boundary.FREE_FREE else 0
+        selected = np.arange(discard, eigenvalues.shape[0])[: self.mode_count]
+        if selected.shape[0] == 0:
+            raise ValueError("No eigenmodes remain after filtering")
+
+        free_modes = np.linalg.solve(chol.T, eigenvectors[:, selected])
+        full_modes = np.zeros((dof, selected.shape[0]), dtype=np.float64)
+        full_modes[free, :] = free_modes
+        for i in range(selected.shape[0]):
+            modal_mass = float(full_modes[:, i] @ mass @ full_modes[:, i])
+            if modal_mass <= 0.0:
+                raise ValueError(f"Mode {i} has non-positive modal mass {modal_mass}")
+            full_modes[:, i] /= math.sqrt(modal_mass)
+        return np.maximum(eigenvalues[selected], 0.0), full_modes
+
+    def _node_lumped_mass(self) -> np.ndarray:
+        lengths, _ = self._element_lengths_tangents()
+        node_mass = np.zeros(self.node_count, dtype=np.float64)
+        element_mass = self.density * self.area * lengths
+        node_mass[:-1] += 0.5 * element_mass
+        node_mass[1:] += 0.5 * element_mass
+        return node_mass
+
+    def _compute_rigid_properties(self, node_mass: np.ndarray) -> None:
+        total = float(np.sum(node_mass))
+        self.total_mass = total
+        if total <= 0.0:
+            return
+        positions = self.node_positions
+        com = (node_mass[:, None] * positions).sum(axis=0) / total
+        relative = positions - com
+        inertia = np.zeros((3, 3), dtype=np.float64)
+        for j in range(self.node_count):
+            r = relative[j]
+            inertia += node_mass[j] * (np.dot(r, r) * np.eye(3) - np.outer(r, r))
+        self.center_of_mass = com.astype(np.float32)
+        self.inertia = inertia.astype(np.float32)
+
+    def _node_inplane_normals(self) -> np.ndarray:
+        _, tangents = self._element_lengths_tangents()
+        node_tangents = np.zeros((self.node_count, 3), dtype=np.float64)
+        node_tangents[:-1] += tangents
+        node_tangents[1:] += tangents
+        normals = np.zeros((self.node_count, 3), dtype=np.float64)
+        for j in range(self.node_count):
+            tangent = node_tangents[j]
+            norm = np.linalg.norm(tangent)
+            if norm <= 1.0e-12:
+                normals[j] = np.cross(self.lateral_axis, tangents[min(j, tangents.shape[0] - 1)])
+                continue
+            tangent = tangent / norm
+            normal = np.cross(self.lateral_axis, tangent)
+            normals[j] = normal / max(np.linalg.norm(normal), 1.0e-12)
+        return normals
+
+    def _cross_section_corner_offsets(self) -> np.ndarray:
+        normals = self._node_inplane_normals()
+        corners = ((-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5))
+        offsets = np.zeros((self.node_count, 4, 3), dtype=np.float64)
+        for c, (sign_w, sign_d) in enumerate(corners):
+            offsets[:, c, :] = sign_w * self.width * self.lateral_axis + sign_d * self.depth * normals
+        return offsets
+
+    def _build_samples(
+        self, nodal_phi: np.ndarray, nodal_psi: np.ndarray, node_mass: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        points = [self.node_positions.astype(np.float32)]
+        phi = [nodal_phi.astype(np.float32)]
+        psi = [nodal_psi.astype(np.float32)]
+        mass = [node_mass.astype(np.float32)]
+
+        offsets = self._cross_section_corner_offsets()
+        for corner in range(offsets.shape[1]):
+            offset = offsets[:, corner, :]
+            points.append((self.node_positions + offset).astype(np.float32))
+            phi.append((nodal_phi + np.cross(nodal_psi, offset[:, None, :])).astype(np.float32))
+            psi.append(nodal_psi.astype(np.float32))
+            mass.append(np.zeros(self.node_count, dtype=np.float32))
+
+        return (
+            np.concatenate(points, axis=0),
+            np.concatenate(phi, axis=0),
+            np.concatenate(psi, axis=0),
+            np.concatenate(mass, axis=0),
+        )
+
+    def surface_mesh(self) -> tuple[np.ndarray, np.ndarray]:
+        """Build a closed triangle mesh of the swept rectangular cross-section.
+
+        The mesh sweeps the ``width`` by ``depth`` cross-section along the
+        centerline, producing four corner vertices per node. The vertices are the
+        same cross-section corner points the basis samples (both come from
+        :meth:`_cross_section_corner_offsets`), so evaluating the modal basis at
+        them returns the stored sample values exactly. Attach the mesh to the
+        elastic body to render the deformed blade and to provide its contact
+        surface.
+
+        Returns:
+            Body-local vertices [m], shape ``[4 * node_count, 3]``, and flat
+            triangle indices, shape ``[3 * triangle_count]``.
+        """
+        offsets = self._cross_section_corner_offsets()
+        vertices = (self.node_positions[:, None, :] + offsets).reshape((-1, 3)).astype(np.float32)
+
+        indices: list[int] = []
+        for j in range(self.node_count - 1):
+            for c in range(4):
+                a = 4 * j + c
+                b = 4 * j + (c + 1) % 4
+                d = 4 * (j + 1) + c
+                e = 4 * (j + 1) + (c + 1) % 4
+                indices.extend((a, b, e, a, e, d))
+        last = 4 * (self.node_count - 1)
+        indices.extend((0, 2, 1, 0, 3, 2))
+        indices.extend((last, last + 1, last + 2, last, last + 2, last + 3))
+
+        return vertices, np.asarray(indices, dtype=np.int32)
+
+
 __all__ = [
     "ModalBasis",
     "ModalGeneratorBeam",
+    "ModalGeneratorCurvedBeam",
     "ModalGeneratorFEM",
     "ModalGeneratorPOD",
     "ModalGeneratorSampled",

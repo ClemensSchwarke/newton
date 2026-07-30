@@ -4461,9 +4461,11 @@ def evaluate_rigid_contact_from_world_points(
     v_dot_n = wp.dot(contact_normal, v_rel)
 
     if contact_kd > 0.0 and v_dot_n < 0.0:
-        damping_coeff = contact_kd * contact_ke
-        damping_force = -damping_coeff * v_dot_n * contact_normal
-        damping_hessian = (damping_coeff / dt) * n_outer
+        # Absolute damping coefficient, matching the rigid contact path. Scaling by ``contact_ke``
+        # here was the pre-1.4.0 stiffness-relative convention and made the implicit damping term
+        # ``ke`` times too large, which an elastic body's modal block cannot absorb.
+        damping_force = -contact_kd * v_dot_n * contact_normal
+        damping_hessian = (contact_kd / dt) * n_outer
         f_total = f_total + damping_force
         K_total = K_total + damping_hessian
 

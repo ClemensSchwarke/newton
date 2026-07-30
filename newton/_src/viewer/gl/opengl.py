@@ -122,6 +122,7 @@ def fill_vertex_data(
     points: wp.array[wp.vec3],
     normals: wp.array[wp.vec3],
     uvs: wp.array[wp.vec2],
+    colors: wp.array[wp.vec3],
     vertices: wp.array[RenderVertex],
 ):
     tid = wp.tid()
