@@ -822,9 +822,6 @@ class Example:
     def render(self):
         self.viewer.begin_frame(self.sim_time)
         self.viewer.log_state(self.state_0)
-        self.viewer.log_lines("/model/elastic_bodies/centerlines", None, None, None)
-        self.viewer.log_points("/model/elastic_bodies/samples", None)
-        self.viewer.log_points("/model/elastic_bodies/endpoints", None)
         self.viewer.log_contacts(self.contacts, self.state_0)
         self.viewer.end_frame()
 
