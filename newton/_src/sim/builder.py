@@ -1234,16 +1234,6 @@ class ModelBuilder:
         """Flattened translational mode samples for internal reduced elastic endpoints."""
         self.elastic_endpoint_psi: list[wp.vec3] = []
         """Flattened angular mode samples for internal reduced elastic endpoints."""
-        self.elastic_render_point_start: list[int] = []
-        """Start point for each reduced elastic body's render polyline samples."""
-        self.elastic_render_point_count: list[int] = []
-        """Number of render polyline sample points for each reduced elastic body."""
-        self.elastic_render_point_local: list[wp.vec3] = []
-        """Local render polyline sample points for reduced elastic bodies."""
-        self.elastic_render_point_sample: list[int] = []
-        """ModalBasis-local sample index for each reduced elastic render point."""
-        self.elastic_render_point_phi: list[wp.vec3] = []
-        """Flattened translational mode samples for reduced elastic render points."""
         self.elastic_shape_shape: list[int] = []
         """Original shape index for each reduced elastic render mesh."""
         self.elastic_shape_body: list[int] = []
@@ -11076,73 +11066,6 @@ class ModelBuilder:
             if child >= 0 and self.body_elastic_index[child] >= 0:
                 add_endpoint(joint_index, 1, child, self.joint_X_c[joint_index])
 
-    def _elastic_render_extent(self, body: int) -> tuple[float, float, float, float]:
-        """Return a simple body-local x-line extent for reduced elastic rendering."""
-        min_x = np.inf
-        max_x = -np.inf
-        min_y = np.inf
-        max_y = -np.inf
-        max_z = -np.inf
-
-        for shape_index, shape_body in enumerate(self.shape_body):
-            if shape_body != body:
-                continue
-
-            center = np.array(wp.transform_get_translation(self.shape_transform[shape_index]), dtype=np.float32)
-            scale = np.array(self.shape_scale[shape_index], dtype=np.float32)
-            if self.shape_type[shape_index] == GeoType.BOX:
-                half_extents = scale
-            else:
-                radius = float(np.max(np.abs(scale))) if scale.size > 0 else 0.5
-                half_extents = np.array([radius, radius, radius], dtype=np.float32)
-
-            min_x = min(min_x, float(center[0] - half_extents[0]))
-            max_x = max(max_x, float(center[0] + half_extents[0]))
-            min_y = min(min_y, float(center[1] - half_extents[1]))
-            max_y = max(max_y, float(center[1] + half_extents[1]))
-            max_z = max(max_z, float(center[2] + half_extents[2]))
-
-        if not np.isfinite(min_x) or not np.isfinite(max_x) or max_x <= min_x:
-            min_x = -0.5
-            max_x = 0.5
-        if not np.isfinite(min_y) or not np.isfinite(max_y):
-            min_y = 0.0
-            max_y = 0.0
-        if not np.isfinite(max_z):
-            max_z = 0.0
-
-        return min_x, max_x, 0.5 * (min_y + max_y), max_z + 0.045
-
-    def _build_elastic_render_cache(self) -> None:
-        """Sample reduced elastic mode shapes on body-local render polylines."""
-        self.elastic_render_point_start.clear()
-        self.elastic_render_point_count.clear()
-        self.elastic_render_point_local.clear()
-        self.elastic_render_point_sample.clear()
-        self.elastic_render_point_phi.clear()
-
-        sample_count = 33
-        for elastic_index, body in enumerate(self.elastic_body):
-            min_x, max_x, y, z = self._elastic_render_extent(body)
-            start = len(self.elastic_render_point_local)
-            self.elastic_render_point_start.append(start)
-            self.elastic_render_point_count.append(sample_count)
-
-            for x in np.linspace(min_x, max_x, sample_count):
-                local_pos = np.array([x, y, z], dtype=np.float32)
-                self.elastic_render_point_local.append(
-                    wp.vec3(float(local_pos[0]), float(local_pos[1]), float(local_pos[2]))
-                )
-                phi, _psi, sample_index = self._add_elastic_modal_sample(elastic_index, local_pos)
-                self.elastic_render_point_sample.append(sample_index)
-                for mode in range(self.elastic_max_mode_count):
-                    if mode < phi.shape[0]:
-                        self.elastic_render_point_phi.append(
-                            wp.vec3(float(phi[mode, 0]), float(phi[mode, 1]), float(phi[mode, 2]))
-                        )
-                    else:
-                        self.elastic_render_point_phi.append(wp.vec3(0.0))
-
     @staticmethod
     def _quat_rotate_np(q: np.ndarray, v: np.ndarray) -> np.ndarray:
         qv = np.array(q[:3], dtype=np.float32)
@@ -11265,6 +11188,12 @@ class ModelBuilder:
         if self.elastic_max_mode_count == 0:
             return
 
+        # Cloned worlds repeat the same (modal source, mesh, shape transform) triple once per
+        # world, and the per-vertex modal lookup dominates finalize on large scenes. The sampling
+        # is a pure function of those three inputs, so evaluate each distinct combination once and
+        # reuse the result for every shape that matches it.
+        sample_cache: dict[tuple, tuple[list, list, list]] = {}
+
         for shape_index, body in enumerate(self.shape_body):
             if body < 0:
                 continue
@@ -11289,23 +11218,61 @@ class ModelBuilder:
             self.elastic_shape_vertex_count.append(int(vertices.shape[0]))
             self.elastic_shape_index_start.append(index_start)
             self.elastic_shape_index_count.append(int(indices.size))
-            self.elastic_shape_indices.extend(int(i) for i in indices)
+            self.elastic_shape_indices.extend(indices.tolist())
 
             shape_xform = self.shape_transform[shape_index]
-            for vertex in vertices:
-                local_pos = self._transform_point_np(shape_xform, vertex)
-                self.elastic_shape_vertex_local.append(
-                    wp.vec3(float(local_pos[0]), float(local_pos[1]), float(local_pos[2]))
-                )
-                phi, _psi, sample_index = self._add_elastic_modal_sample(elastic_index, local_pos)
-                self.elastic_shape_vertex_sample.append(sample_index)
-                for mode in range(self.elastic_max_mode_count):
-                    if mode < phi.shape[0]:
-                        self.elastic_shape_vertex_phi.append(
-                            wp.vec3(float(phi[mode, 0]), float(phi[mode, 1]), float(phi[mode, 2]))
-                        )
-                    else:
-                        self.elastic_shape_vertex_phi.append(wp.vec3(0.0))
+            basis_index = int(self.elastic_basis[elastic_index]) if elastic_index < len(self.elastic_basis) else -1
+            # The modal source is either a shared ModalBasis or a per-body callable; both are
+            # keyed by identity because two bodies may legitimately share one.
+            modal_key = (
+                ("basis", basis_index)
+                if basis_index >= 0
+                else ("fn", id(self.elastic_mode_shape_fn[elastic_index]))
+            )
+            cache_key = (
+                modal_key,
+                int(self.elastic_mode_count[elastic_index]),
+                vertices.tobytes(),
+                tuple(float(value) for value in shape_xform),
+            )
+            cached = sample_cache.get(cache_key)
+            if cached is None:
+                cached = self._sample_elastic_shape_vertices(elastic_index, shape_xform, vertices)
+                sample_cache[cache_key] = cached
+            local_values, sample_values, phi_values = cached
+
+            self.elastic_shape_vertex_local.extend(local_values)
+            self.elastic_shape_vertex_sample.extend(sample_values)
+            self.elastic_shape_vertex_phi.extend(phi_values)
+
+    def _sample_elastic_shape_vertices(
+        self, elastic_index: int, shape_xform: Transform, vertices: np.ndarray
+    ) -> tuple[list, list, list]:
+        """Sample one elastic shape's render vertices, returning body-local points, basis sample
+        indices, and zero-padded translational mode values."""
+        translation = np.array(wp.transform_get_translation(shape_xform), dtype=np.float32)
+        rotation = np.array(wp.transform_get_rotation(shape_xform), dtype=np.float32)
+        points = np.asarray(vertices).reshape((-1, 3))
+
+        # Batched form of _quat_rotate_np over every vertex at once. The grouping mirrors the
+        # scalar helpers exactly so the float32 rounding is bit-identical.
+        axis = rotation[:3]
+        local_points = translation + (points + 2.0 * np.cross(axis, np.cross(axis, points) + rotation[3] * points))
+
+        local_values: list[wp.vec3] = []
+        sample_values: list[int] = []
+        phi_values: list[wp.vec3] = []
+        zero = wp.vec3(0.0)
+        for local_pos in local_points:
+            local_values.append(wp.vec3(float(local_pos[0]), float(local_pos[1]), float(local_pos[2])))
+            phi, _psi, sample_index = self._add_elastic_modal_sample(elastic_index, local_pos)
+            sample_values.append(sample_index)
+            for mode in range(self.elastic_max_mode_count):
+                if mode < phi.shape[0]:
+                    phi_values.append(wp.vec3(float(phi[mode, 0]), float(phi[mode, 1]), float(phi[mode, 2])))
+                else:
+                    phi_values.append(zero)
+        return local_values, sample_values, phi_values
 
     def _build_world_starts(self):
         """
@@ -11574,7 +11541,6 @@ class ModelBuilder:
 
         # sample reduced elastic mode shapes at ordinary joint endpoints
         self._build_elastic_endpoint_cache()
-        self._build_elastic_render_cache()
         self._build_elastic_shape_render_cache()
 
         # construct world starts by ensuring they are cumulative and appending
@@ -12516,16 +12482,6 @@ class ModelBuilder:
             m.elastic_endpoint_sample = wp.array(self.elastic_endpoint_sample, dtype=wp.int32)
             m.elastic_endpoint_phi = wp.array(self.elastic_endpoint_phi, dtype=wp.vec3, requires_grad=requires_grad)
             m.elastic_endpoint_psi = wp.array(self.elastic_endpoint_psi, dtype=wp.vec3, requires_grad=requires_grad)
-            m.elastic_render_point_total_count = len(self.elastic_render_point_local)
-            m.elastic_render_point_start = wp.array(self.elastic_render_point_start, dtype=wp.int32)
-            m.elastic_render_point_count = wp.array(self.elastic_render_point_count, dtype=wp.int32)
-            m.elastic_render_point_local = wp.array(
-                self.elastic_render_point_local, dtype=wp.vec3, requires_grad=requires_grad
-            )
-            m.elastic_render_point_sample = wp.array(self.elastic_render_point_sample, dtype=wp.int32)
-            m.elastic_render_point_phi = wp.array(
-                self.elastic_render_point_phi, dtype=wp.vec3, requires_grad=requires_grad
-            )
             m.elastic_shape_count = len(self.elastic_shape_shape)
             m.elastic_shape_vertex_total_count = len(self.elastic_shape_vertex_local)
             m.elastic_shape_index_total_count = len(self.elastic_shape_indices)

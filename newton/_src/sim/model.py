@@ -797,18 +797,6 @@ class Model:
         """Flattened translational mode samples for reduced elastic endpoints [m per mode], shape [elastic_endpoint_count * elastic_max_mode_count, 3]."""
         self.elastic_endpoint_psi: wp.array[wp.vec3] | None = None
         """Flattened angular mode samples for reduced elastic endpoints [rad per mode], shape [elastic_endpoint_count * elastic_max_mode_count, 3]."""
-        self.elastic_render_point_start: wp.array[wp.int32] | None = None
-        """Start render point for each reduced elastic body, shape [elastic_body_count], int."""
-        self.elastic_render_point_count: wp.array[wp.int32] | None = None
-        """Render point count for each reduced elastic body, shape [elastic_body_count], int."""
-        self.elastic_render_point_local: wp.array[wp.vec3] | None = None
-        """Local render polyline sample points for reduced elastic bodies [m], shape [elastic_render_point_count, 3]."""
-        self.elastic_render_point_sample: wp.array[wp.int32] | None = None
-        """ModalBasis-local sample index for each reduced elastic render point, shape [elastic_render_point_count], int."""
-        self.elastic_render_point_phi: wp.array[wp.vec3] | None = None
-        """Flattened translational mode samples for reduced elastic render points [m per mode], shape [elastic_render_point_count * elastic_max_mode_count, 3]."""
-        self.elastic_render_point_total_count: int = 0
-        """Total number of reduced elastic render polyline sample points."""
         self.elastic_shape_shape: wp.array[wp.int32] | None = None
         """Original shape index for each reduced elastic render mesh, shape [elastic_shape_count], int."""
         self.elastic_shape_body: wp.array[wp.int32] | None = None

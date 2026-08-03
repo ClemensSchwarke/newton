@@ -3182,6 +3182,8 @@ class SolverVBD(SolverBase):
                     self.body_inv_mass_effective,
                     self.body_body_contact_material_ke,
                     self.rigid_linear_beta,
+                    contacts.rigid_contact_elastic_sample0,
+                    contacts.rigid_contact_elastic_sample1,
                     self.body_body_contact_penalty_k,  # input/output
                     self.body_body_contact_lambda,  # input/output
                 ],
@@ -3649,6 +3651,8 @@ class SolverVBD(SolverBase):
                     self.body_inv_mass_effective,
                     self.body_body_contact_material_ke,
                     self.rigid_linear_beta,
+                    contacts.rigid_contact_elastic_sample0,
+                    contacts.rigid_contact_elastic_sample1,
                     self.body_body_contact_penalty_k,
                     self.body_body_contact_lambda,
                 ],

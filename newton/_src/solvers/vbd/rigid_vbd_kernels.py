@@ -75,6 +75,24 @@ class RigidContactHistory:
 
 
 @wp.func
+def is_elastic_contact(
+    rigid_contact_elastic_sample0: wp.array[wp.int32],
+    rigid_contact_elastic_sample1: wp.array[wp.int32],
+    contact_idx: int,
+):
+    """True when either side of the contact is a reduced elastic surface sample.
+
+    Such a contact is also accumulated onto the modal coordinates by
+    _accumulate_elastic_contact_modes, which is a pure penalty model at the
+    material stiffness with no augmented Lagrangian dual. The frame block must
+    use the same force law, so these contacts are excluded from AVBD.
+    """
+    if rigid_contact_elastic_sample0.shape[0] == 0:
+        return False
+    return rigid_contact_elastic_sample0[contact_idx] >= 0 or rigid_contact_elastic_sample1[contact_idx] >= 0
+
+
+@wp.func
 def ldlt6_solve(h_ll: wp.mat33, h_aa: wp.mat33, h_al: wp.mat33, rhs_lin: wp.vec3, rhs_ang: wp.vec3):
     """Solve the 6x6 SPD block system via direct LDL^T factorization.
 
@@ -2762,7 +2780,18 @@ def accumulate_body_body_contacts_per_body(
         k = contact_penalty_k[contact_idx]
         friction_c0 = wp.vec3(0.0)
 
-        if hard_contacts == 1:
+        # A reduced elastic contact contributes to the floating frame here and to
+        # the modal coordinates in _accumulate_elastic_contact_modes. Both blocks
+        # are projections of one force and must share one force law, but the modal
+        # block is pure penalty at the material stiffness with no dual. So take
+        # elastic contacts out of AVBD: material ke instead of the adaptive
+        # penalty, no lambda, no C0 stabilization.
+        contact_hard = hard_contacts
+        if is_elastic_contact(rigid_contact_elastic_sample0, rigid_contact_elastic_sample1, contact_idx):
+            contact_hard = 0
+            k = contact_material_ke[contact_idx]
+
+        if contact_hard == 1:
             lam_vec = contact_lambda[contact_idx]
             lam_n = wp.dot(lam_vec, contact_normal)
             C0_vec = contact_C0[contact_idx]
@@ -2813,7 +2842,7 @@ def accumulate_body_body_contacts_per_body(
             lam_vec,
             contact_mu,
             friction_epsilon,
-            hard_contacts,
+            contact_hard,
             dt,
             friction_c0,
         )
@@ -2973,7 +3002,15 @@ def compute_rigid_contact_forces(
     k = contact_penalty_k[contact_idx]
     friction_c0 = wp.vec3(0.0)
 
-    if hard_contacts == 1:
+    # See accumulate_body_body_contacts_per_body: reduced elastic contacts are
+    # solved as plain penalty contacts at the material stiffness so the frame
+    # block matches the modal block.
+    contact_hard = hard_contacts
+    if is_elastic_contact(rigid_contact_elastic_sample0, rigid_contact_elastic_sample1, contact_idx):
+        contact_hard = 0
+        k = contact_material_ke[contact_idx]
+
+    if contact_hard == 1:
         lam_vec = contact_lambda[contact_idx]
         lam_n = wp.dot(lam_vec, contact_normal)
         C0_vec = contact_C0[contact_idx]
@@ -3020,7 +3057,7 @@ def compute_rigid_contact_forces(
         lam_vec,
         contact_mu,
         friction_epsilon,
-        hard_contacts,
+        contact_hard,
         dt,
         friction_c0,
     )
@@ -3927,6 +3964,8 @@ def update_duals_body_body_contacts(
     body_inv_mass: wp.array[float],
     contact_material_ke: wp.array[float],
     beta: float,
+    rigid_contact_elastic_sample0: wp.array[wp.int32],
+    rigid_contact_elastic_sample1: wp.array[wp.int32],
     # Input/output
     contact_penalty_k: wp.array[float],
     contact_lambda: wp.array[wp.vec3],
@@ -3939,9 +3978,16 @@ def update_duals_body_body_contacts(
     uses displacement (body_q_prev -> body_q) for kinematic friction support.
     Coulomb cone clamping on tangential lambda. Soft mode: no lambda update.
     K ramp runs unconditionally for both hard and soft contacts.
+
+    Reduced elastic contacts are skipped entirely: they are solved as plain
+    penalty contacts at the material stiffness so that the frame block matches
+    the modal block, so they must accumulate no dual and their penalty must not
+    ramp.
     """
     idx = wp.tid()
     if idx >= rigid_contact_count[0]:
+        return
+    if is_elastic_contact(rigid_contact_elastic_sample0, rigid_contact_elastic_sample1, idx):
         return
 
     shape_id_0 = rigid_contact_shape0[idx]

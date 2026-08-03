@@ -1155,37 +1155,6 @@ def test_modal_basis_shared_by_elastic_bodies(test, device):
     np.testing.assert_allclose(model.elastic_basis.numpy(), [0, 0], atol=0)
 
 
-def test_elastic_render_shape_sampling(test, device):
-    def shape_fn(x):
-        xi = x[0] / 0.5
-        return np.array([[0.0, 1.0 - xi * xi, 0.0]], dtype=np.float32)
-
-    builder = newton.ModelBuilder(gravity=0.0)
-    body = builder.add_body_elastic(
-        mass=1.0,
-        inertia=_identity_inertia(),
-        mode_count=1,
-        mode_shape_fn=shape_fn,
-    )
-    builder.add_shape_box(body, hx=0.5, hy=0.05, hz=0.03)
-    builder.color()
-    model = builder.finalize(device=device)
-
-    test.assertEqual(model.elastic_render_point_total_count, 33)
-    test.assertEqual(int(model.elastic_render_point_start.numpy()[0]), 0)
-    test.assertEqual(int(model.elastic_render_point_count.numpy()[0]), 33)
-
-    local = model.elastic_render_point_local.numpy()
-    np.testing.assert_allclose(local[0, 0], -0.5, atol=1.0e-7)
-    np.testing.assert_allclose(local[-1, 0], 0.5, atol=1.0e-7)
-    test.assertGreater(local[0, 2], 0.03)
-
-    phi = model.elastic_render_point_phi.numpy().reshape((-1, 3))
-    np.testing.assert_allclose(phi[16], [0.0, 1.0, 0.0], atol=1.0e-6)
-    np.testing.assert_allclose(phi[0], [0.0, 0.0, 0.0], atol=1.0e-6)
-    np.testing.assert_allclose(phi[-1], [0.0, 0.0, 0.0], atol=1.0e-6)
-
-
 def test_elastic_shape_mesh_sampling(test, device):
     length = 1.0
     hy = 0.05
@@ -3235,12 +3204,6 @@ for device in devices:
         TestReducedElasticBody,
         "test_modal_basis_shared_by_elastic_bodies",
         test_modal_basis_shared_by_elastic_bodies,
-        devices=[device],
-    )
-    add_function_test(
-        TestReducedElasticBody,
-        "test_elastic_render_shape_sampling",
-        test_elastic_render_shape_sampling,
         devices=[device],
     )
     add_function_test(

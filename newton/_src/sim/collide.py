@@ -39,6 +39,15 @@ class ContactWriterData:
     body_q: wp.array[wp.transform]
     shape_body: wp.array[int]
     shape_gap: wp.array[float]
+    # Per-body reduced elastic index, -1 for rigid bodies. Contacts touching a
+    # reduced elastic body are rejected by write_contact and generated instead
+    # by create_elastic_shape_contacts, which tags them with an elastic sample
+    # index so the force is projected onto the modal coordinates as well as the
+    # floating frame. Emitting them from the generic narrow phase too applies
+    # the same contact twice, and the generic copy carries no modal projection,
+    # so it resolves the penetration by moving the frame alone and the modes
+    # never load. Empty when the model has no reduced elastic bodies.
+    body_elastic_index: wp.array[int]
     # Output arrays
     contact_count: wp.array[int]
     out_shape0: wp.array[int]
@@ -57,6 +66,8 @@ class ContactWriterData:
     out_damping: wp.array[float]
     out_friction: wp.array[float]
     out_sort_key: wp.array[wp.int64]
+    out_elastic_sample0: wp.array[int]
+    out_elastic_sample1: wp.array[int]
 
 
 @wp.func
@@ -73,6 +84,25 @@ def write_contact(
         writer_data: ContactWriterData struct containing body info and output arrays
         output_index: If -1, use atomic_add to get the next available index if contact distance is less than margin. If >= 0, use this index directly and skip margin check.
     """
+    # Reduced elastic bodies are served exclusively by
+    # create_elastic_shape_contacts; see ContactWriterData.body_elastic_index.
+    if writer_data.body_elastic_index.shape[0] > 0:
+        body_a = writer_data.shape_body[contact_data.shape_a]
+        body_b = writer_data.shape_body[contact_data.shape_b]
+        reject = False
+        if body_a >= 0 and writer_data.body_elastic_index[body_a] >= 0:
+            reject = True
+        if body_b >= 0 and writer_data.body_elastic_index[body_b] >= 0:
+            reject = True
+        if reject:
+            if output_index >= 0 and output_index < writer_data.contact_max:
+                writer_data.out_shape0[output_index] = -1
+                writer_data.out_shape1[output_index] = -1
+                if writer_data.out_elastic_sample0.shape[0] > 0:
+                    writer_data.out_elastic_sample0[output_index] = -1
+                    writer_data.out_elastic_sample1[output_index] = -1
+            return
+
     total_separation_needed = (
         contact_data.radius_eff_a + contact_data.radius_eff_b + contact_data.margin_a + contact_data.margin_b
     )
@@ -134,6 +164,12 @@ def write_contact(
     writer_data.out_margin0[index] = offset_mag_a
     writer_data.out_margin1[index] = offset_mag_b
     writer_data.out_tids[index] = 0  # tid not available in this context
+    # This row is a rigid contact. Stamp the elastic sample slots so a row
+    # recycled from a previous frame cannot leave a stale vertex index behind,
+    # which the rigid contact solve would dereference.
+    if writer_data.out_elastic_sample0.shape[0] > 0:
+        writer_data.out_elastic_sample0[index] = -1
+        writer_data.out_elastic_sample1[index] = -1
 
     # Write stiffness/damping/friction only if per-contact shape properties are enabled
     if writer_data.out_stiffness.shape[0] > 0:
@@ -1050,6 +1086,10 @@ class CollisionPipeline:
         writer_data.body_q = state.body_q
         writer_data.shape_body = model.shape_body
         writer_data.shape_gap = model.shape_gap
+        if getattr(model, "elastic_body_count", 0) > 0:
+            writer_data.body_elastic_index = model.body_elastic_index
+            writer_data.out_elastic_sample0 = contacts.rigid_contact_elastic_sample0
+            writer_data.out_elastic_sample1 = contacts.rigid_contact_elastic_sample1
         writer_data.contact_count = contacts.rigid_contact_count
         writer_data.out_shape0 = contacts.rigid_contact_shape0
         writer_data.out_shape1 = contacts.rigid_contact_shape1
