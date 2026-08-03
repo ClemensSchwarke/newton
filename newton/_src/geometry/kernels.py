@@ -1560,14 +1560,13 @@ def create_elastic_shape_contacts(
     elastic_joint: wp.array[wp.int32],
     elastic_mode_count: wp.array[wp.int32],
     elastic_max_mode_count: int,
-    elastic_shape_count: int,
-    elastic_shape_shape: wp.array[wp.int32],
+    shape_elastic_index: wp.array[wp.int32],
     elastic_shape_body: wp.array[wp.int32],
     elastic_shape_vertex_start: wp.array[wp.int32],
     elastic_shape_vertex_count: wp.array[wp.int32],
     elastic_shape_vertex_local: wp.array[wp.vec3],
     elastic_shape_vertex_phi: wp.array[wp.vec3],
-    elastic_shape_vertex_total_count: int,
+    elastic_shape_vertex_max_count: int,
     shape_pairs: wp.array[wp.vec2i],
     shape_pair_count: wp.array[wp.int32],
     shape_transform: wp.array[wp.transform],
@@ -1599,38 +1598,42 @@ def create_elastic_shape_contacts(
     rigid_contact_elastic_sample1: wp.array[wp.int32],
 ):
     tid = wp.tid()
-    if elastic_shape_vertex_total_count <= 0:
+    if elastic_shape_vertex_max_count <= 0:
         return
 
-    pair_index = tid // elastic_shape_vertex_total_count
-    vertex_index = tid - pair_index * elastic_shape_vertex_total_count
+    pair_index = tid // elastic_shape_vertex_max_count
+    local_vertex = tid - pair_index * elastic_shape_vertex_max_count
     if pair_index >= shape_pair_count[0]:
-        return
-
-    elastic_shape = wp.int32(-1)
-    elastic_body = wp.int32(-1)
-    for elastic_shape_index in range(elastic_shape_count):
-        start = elastic_shape_vertex_start[elastic_shape_index]
-        count = elastic_shape_vertex_count[elastic_shape_index]
-        if vertex_index >= start and vertex_index < start + count:
-            elastic_shape = elastic_shape_shape[elastic_shape_index]
-            elastic_body = elastic_shape_body[elastic_shape_index]
-            break
-
-    if elastic_shape < 0 or elastic_body < 0:
-        return
-    if (shape_flags[elastic_shape] & ShapeFlags.COLLIDE_SHAPES) == 0:
         return
 
     pair = shape_pairs[pair_index]
     shape_a = pair[0]
     shape_b = pair[1]
+
+    elastic_a = shape_elastic_index[shape_a]
+    elastic_b = shape_elastic_index[shape_b]
+    elastic_shape_index = wp.int32(-1)
+    elastic_shape = wp.int32(-1)
     rigid_shape = wp.int32(-1)
-    if shape_a == elastic_shape:
+    if elastic_a >= 0 and elastic_b < 0:
+        elastic_shape_index = elastic_a
+        elastic_shape = shape_a
         rigid_shape = shape_b
-    elif shape_b == elastic_shape:
+    elif elastic_b >= 0 and elastic_a < 0:
+        elastic_shape_index = elastic_b
+        elastic_shape = shape_b
         rigid_shape = shape_a
     else:
+        return
+
+    if local_vertex >= elastic_shape_vertex_count[elastic_shape_index]:
+        return
+    vertex_index = elastic_shape_vertex_start[elastic_shape_index] + local_vertex
+
+    elastic_body = elastic_shape_body[elastic_shape_index]
+    if elastic_body < 0:
+        return
+    if (shape_flags[elastic_shape] & ShapeFlags.COLLIDE_SHAPES) == 0:
         return
 
     if rigid_shape < 0:

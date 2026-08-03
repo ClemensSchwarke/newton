@@ -829,10 +829,20 @@ class Model:
         """Flattened mode samples for reduced elastic render mesh vertices [m per mode], shape [elastic_shape_vertex_total_count * elastic_max_mode_count, 3]."""
         self.elastic_shape_indices: wp.array[wp.int32] | None = None
         """Flattened local triangle indices for reduced elastic render meshes, shape [elastic_shape_index_total_count], int."""
+        self.shape_elastic_index: wp.array[wp.int32] | None = None
+        """Reduced elastic mesh index for each shape, or -1 if the shape is not elastic, shape [shape_count], int.
+
+        Reverse of :attr:`elastic_shape_shape`. Lets contact kernels resolve a shape to its elastic
+        mesh with one lookup instead of scanning every elastic mesh in the model."""
         self.elastic_shape_count: int = 0
         """Total number of reduced elastic render meshes."""
         self.elastic_shape_vertex_total_count: int = 0
         """Total number of reduced elastic render mesh vertices."""
+        self.elastic_shape_vertex_max_count: int = 0
+        """Largest per-mesh vertex count over all reduced elastic render meshes.
+
+        Contact kernels index vertices locally to a single mesh, so this bounds the per-pair thread
+        count independently of how many elastic meshes the model holds."""
         self.elastic_shape_index_total_count: int = 0
         """Total number of reduced elastic render mesh triangle indices."""
         self.elastic_max_mode_count: int = 0

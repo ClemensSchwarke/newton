@@ -12543,6 +12543,11 @@ class ModelBuilder:
                 self.elastic_shape_vertex_phi, dtype=wp.vec3, requires_grad=requires_grad
             )
             m.elastic_shape_indices = wp.array(self.elastic_shape_indices, dtype=wp.int32)
+            m.elastic_shape_vertex_max_count = max(self.elastic_shape_vertex_count, default=0)
+            shape_elastic_index = [-1] * self.shape_count
+            for elastic_shape_index, shape_index in enumerate(self.elastic_shape_shape):
+                shape_elastic_index[shape_index] = elastic_shape_index
+            m.shape_elastic_index = wp.array(shape_elastic_index, dtype=wp.int32)
 
             self.find_shape_contact_pairs(m)
 

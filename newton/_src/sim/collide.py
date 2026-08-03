@@ -1102,12 +1102,12 @@ class CollisionPipeline:
 
         if (
             getattr(model, "elastic_shape_count", 0) > 0
-            and getattr(model, "elastic_shape_vertex_total_count", 0) > 0
+            and getattr(model, "elastic_shape_vertex_max_count", 0) > 0
             and self.shape_pairs_max > 0
         ):
             wp.launch(
                 kernel=create_elastic_shape_contacts,
-                dim=self.shape_pairs_max * model.elastic_shape_vertex_total_count,
+                dim=self.shape_pairs_max * model.elastic_shape_vertex_max_count,
                 inputs=[
                     state.body_q,
                     state.joint_q,
@@ -1116,14 +1116,13 @@ class CollisionPipeline:
                     model.elastic_joint,
                     model.elastic_mode_count,
                     model.elastic_max_mode_count,
-                    model.elastic_shape_count,
-                    model.elastic_shape_shape,
+                    model.shape_elastic_index,
                     model.elastic_shape_body,
                     model.elastic_shape_vertex_start,
                     model.elastic_shape_vertex_count,
                     model.elastic_shape_vertex_local,
                     model.elastic_shape_vertex_phi,
-                    model.elastic_shape_vertex_total_count,
+                    model.elastic_shape_vertex_max_count,
                     self.broad_phase_shape_pairs,
                     self.broad_phase_pair_count,
                     model.shape_transform,
