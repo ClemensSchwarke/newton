@@ -11225,9 +11225,7 @@ class ModelBuilder:
             # The modal source is either a shared ModalBasis or a per-body callable; both are
             # keyed by identity because two bodies may legitimately share one.
             modal_key = (
-                ("basis", basis_index)
-                if basis_index >= 0
-                else ("fn", id(self.elastic_mode_shape_fn[elastic_index]))
+                ("basis", basis_index) if basis_index >= 0 else ("fn", id(self.elastic_mode_shape_fn[elastic_index]))
             )
             cache_key = (
                 modal_key,
@@ -12482,6 +12480,22 @@ class ModelBuilder:
             m.elastic_endpoint_sample = wp.array(self.elastic_endpoint_sample, dtype=wp.int32)
             m.elastic_endpoint_phi = wp.array(self.elastic_endpoint_phi, dtype=wp.vec3, requires_grad=requires_grad)
             m.elastic_endpoint_psi = wp.array(self.elastic_endpoint_psi, dtype=wp.vec3, requires_grad=requires_grad)
+
+            grouped: list[list[int]] = [[] for _ in self.elastic_body]
+            for endpoint_index, endpoint_body in enumerate(self.elastic_endpoint_body):
+                elastic_index = self.body_elastic_index[endpoint_body]
+                if elastic_index >= 0:
+                    grouped[elastic_index].append(endpoint_index)
+            endpoint_ids: list[int] = []
+            endpoint_starts: list[int] = []
+            endpoint_counts: list[int] = []
+            for ids in grouped:
+                endpoint_starts.append(len(endpoint_ids))
+                endpoint_counts.append(len(ids))
+                endpoint_ids.extend(ids)
+            m.elastic_body_endpoint_start = wp.array(endpoint_starts, dtype=wp.int32)
+            m.elastic_body_endpoint_count = wp.array(endpoint_counts, dtype=wp.int32)
+            m.elastic_body_endpoint_index = wp.array(endpoint_ids, dtype=wp.int32)
             m.elastic_shape_count = len(self.elastic_shape_shape)
             m.elastic_shape_vertex_total_count = len(self.elastic_shape_vertex_local)
             m.elastic_shape_index_total_count = len(self.elastic_shape_indices)

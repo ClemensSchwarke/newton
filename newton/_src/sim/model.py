@@ -793,6 +793,16 @@ class Model:
         """Body index for each internal reduced elastic endpoint, shape [elastic_endpoint_count], int."""
         self.elastic_endpoint_sample: wp.array[wp.int32] | None = None
         """ModalBasis-local sample index for each internal reduced elastic endpoint, shape [elastic_endpoint_count], int."""
+        self.elastic_body_endpoint_start: wp.array[wp.int32] | None = None
+        """Start offset into :attr:`elastic_body_endpoint_index` for each reduced elastic body, shape [elastic_body_count], int."""
+        self.elastic_body_endpoint_count: wp.array[wp.int32] | None = None
+        """Number of endpoints owned by each reduced elastic body, shape [elastic_body_count], int."""
+        self.elastic_body_endpoint_index: wp.array[wp.int32] | None = None
+        """Endpoint ids grouped by owning reduced elastic body, shape [elastic_endpoint_count], int.
+
+        Lets the modal assembly kernel walk one body's endpoints with a start/count lookup instead
+        of scanning every endpoint in the model, which is quadratic in the world count. The endpoint
+        arrays themselves stay in creation order because joints reference endpoints by id."""
         self.elastic_endpoint_phi: wp.array[wp.vec3] | None = None
         """Flattened translational mode samples for reduced elastic endpoints [m per mode], shape [elastic_endpoint_count * elastic_max_mode_count, 3]."""
         self.elastic_endpoint_psi: wp.array[wp.vec3] | None = None

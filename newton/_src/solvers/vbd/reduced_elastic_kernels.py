@@ -355,7 +355,9 @@ def assemble_elastic_joints(
     elastic_mode_coupling_angular: wp.array[wp.vec3],
     elastic_mode_coupling_centrifugal: wp.array[wp.mat33],
     elastic_mode_coupling_coriolis: wp.array[wp.vec3],
-    elastic_endpoint_count: int,
+    elastic_body_endpoint_start: wp.array[wp.int32],
+    elastic_body_endpoint_count: wp.array[wp.int32],
+    elastic_body_endpoint_index: wp.array[wp.int32],
     elastic_endpoint_joint: wp.array[wp.int32],
     elastic_endpoint_side: wp.array[wp.int32],
     elastic_endpoint_body: wp.array[wp.int32],
@@ -485,9 +487,12 @@ def assemble_elastic_joints(
         elastic_mode_block_grad[block_vec_start + mode] = grad
         elastic_mode_block_matrix[block_mat_start + mode * max_modes + mode] = h
 
-    for endpoint in range(elastic_endpoint_count):
-        if elastic_endpoint_body[endpoint] != body:
-            continue
+    # Walk only this body's endpoints. Scanning the whole endpoint array here would be
+    # O(elastic_body_count * elastic_endpoint_count), and both scale with the world count.
+    endpoint_slot_start = elastic_body_endpoint_start[elastic_index]
+    endpoint_slot_count = elastic_body_endpoint_count[elastic_index]
+    for endpoint_slot in range(endpoint_slot_count):
+        endpoint = elastic_body_endpoint_index[endpoint_slot_start + endpoint_slot]
 
         joint = elastic_endpoint_joint[endpoint]
         if not joint_enabled[joint]:
