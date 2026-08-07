@@ -1,0 +1,24 @@
+{
+  "NVIDIA GeForce RTX 5090|kd=100000|32x80": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "PRDM": {
+      "squash": 12.67927885055542,
+      "rebound_height": 40.57591035962105
+    },
+    "elastic": {
+      "squash": -1.6342401504516602,
+      "rebound_height": 40.355075150728226
+    }
+  },
+  "NVIDIA GeForce RTX 5090|kd=0.35|32x80": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "PRDM": {
+      "squash": 12.58087158203125,
+      "rebound_height": 41.54031351208687
+    },
+    "elastic": {
+      "squash": 14.84304666519165,
+      "rebound_height": 45.56404426693916
+    }
+  }
+}
