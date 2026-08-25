@@ -2003,6 +2003,19 @@ def build_body_body_contact_lists(
     """
     Build per-body contact lists for body-centric per-color contact evaluation.
     Tracks overflow into body_contact_overflow_max for diagnostics.
+
+    Each contact index t_id is appended to both bodies' lists (shape0's body and
+    shape1's body), enabling efficient lookup of all contacts involving a given body
+    during per-body solve iterations.
+
+    Notes:
+      - body_contact_counts[b] is reset to 0 on the host before launch and
+        atomically incremented here.
+      - If a body has more than body_contact_buffer_pre_alloc contacts, extra indices
+        are not stored. Consumers detect overflow and scan the full contact array so
+        force and Hessian assembly remains complete.
+      - body_contact_indices is not cleared each step; only the prefix defined
+        by min(body_contact_counts, body_contact_buffer_pre_alloc) is valid.
     """
     t_id = wp.tid()
     if t_id >= rigid_contact_count[0]:
@@ -2704,10 +2717,10 @@ def accumulate_body_body_contacts_per_body(
         return
 
     num_contacts = body_contact_counts[body_id]
-    if num_contacts > body_contact_buffer_pre_alloc:
-        num_contacts = body_contact_buffer_pre_alloc
-
-    contact_count = rigid_contact_count[0]
+    use_contact_list = num_contacts <= body_contact_buffer_pre_alloc
+    contact_limit = num_contacts
+    if not use_contact_list:
+        contact_limit = rigid_contact_count[0]
 
     force_acc = wp.vec3(0.0)
     torque_acc = wp.vec3(0.0)
@@ -2716,9 +2729,11 @@ def accumulate_body_body_contacts_per_body(
     h_aa_acc = wp.mat33(0.0)
 
     i = thread_id_within_body
-    while i < num_contacts:
-        contact_idx = body_contact_indices[body_id * body_contact_buffer_pre_alloc + i]
-        if contact_idx >= contact_count:
+    while i < contact_limit:
+        contact_idx = i
+        if use_contact_list:
+            contact_idx = body_contact_indices[body_id * body_contact_buffer_pre_alloc + i]
+        if contact_idx >= rigid_contact_count[0]:
             i += _NUM_CONTACT_THREADS_PER_BODY
             continue
 
@@ -3308,11 +3323,17 @@ def solve_rigid_body(
 
     Note:
       - All forces, torques, and Hessian blocks are expressed in the world frame.
+      - Reduced elastic bodies are skipped: their frame is solved together with their modal
+        coordinates in the coupled block solve, so updating it here would double count.
     """
     tid = wp.tid()
     body_index = body_ids_in_color[tid]
 
     q_current = body_q[body_index]
+
+    if body_elastic_index[body_index] >= 0:
+        body_q_new[body_index] = q_current
+        return
 
     # Early exit for kinematic bodies
     if body_inv_mass[body_index] == 0.0:

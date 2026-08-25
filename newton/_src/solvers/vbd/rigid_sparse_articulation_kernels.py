@@ -1242,6 +1242,7 @@ def _body_diagonal_contribution(
 def _apply_sparse_delta_value_to_body(
     local_body: int,
     articulation_bodies: wp.array[wp.int32],
+    body_elastic_index: wp.array[wp.int32],
     body_q: wp.array[wp.transform],
     body_inv_mass: wp.array[float],
     body_com: wp.array[wp.vec3],
@@ -1251,7 +1252,11 @@ def _apply_sparse_delta_value_to_body(
 ):
     body = articulation_bodies[local_body]
     q_current = body_q[body]
-    if body_inv_mass[body] == 0.0:
+    # A reduced elastic body's frame is solved together with its modal coordinates in the
+    # coupled block solve, so applying the articulation delta here would double count it.
+    if body_elastic_index[body] >= 0:
+        body_q_new[body] = q_current
+    elif body_inv_mass[body] == 0.0:
         body_q_new[body] = q_current
     else:
         dx = dx_in * update_relaxation
@@ -1276,6 +1281,7 @@ def _apply_sparse_delta_value_to_body(
 def _apply_sparse_delta_to_body(
     local_body: int,
     articulation_bodies: wp.array[wp.int32],
+    body_elastic_index: wp.array[wp.int32],
     body_q: wp.array[wp.transform],
     body_inv_mass: wp.array[float],
     body_com: wp.array[wp.vec3],
@@ -1286,6 +1292,7 @@ def _apply_sparse_delta_to_body(
     _apply_sparse_delta_value_to_body(
         local_body,
         articulation_bodies,
+        body_elastic_index,
         body_q,
         body_inv_mass,
         body_com,
@@ -2113,6 +2120,7 @@ def solve_articulation_sparse_block32_scalar(
 @wp.kernel
 def apply_articulation_sparse_delta_scalar(
     articulation_bodies: wp.array[wp.int32],
+    body_elastic_index: wp.array[wp.int32],
     body_q: wp.array[wp.transform],
     body_inv_mass: wp.array[float],
     body_com: wp.array[wp.vec3],
@@ -2132,6 +2140,7 @@ def apply_articulation_sparse_delta_scalar(
     _apply_sparse_delta_value_to_body(
         local_body,
         articulation_bodies,
+        body_elastic_index,
         body_q,
         body_inv_mass,
         body_com,
@@ -2805,6 +2814,7 @@ def solve_articulation_sparse_serial(
             _apply_sparse_delta_to_body(
                 local_body,
                 articulation_bodies,
+                body_elastic_index,
                 body_q,
                 body_inv_mass,
                 body_com,
