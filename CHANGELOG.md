@@ -9,6 +9,7 @@
 - Add `viewer.set_picking_linear_only_bodies()` and `viewer.clear_picking_linear_only_bodies()` to mark bodies that should receive only the linear component of mouse-picking force, suppressing offset-induced torque.
 - Add opt-in `body_frame_origin="com"` to `ModelBuilder.add_rod()` and `ModelBuilder.add_rod_graph()` for COM-centered cable capsule body frames.
 - Add experimental `SolverVBD(rigid_articulation_solve="block_sparse_joints")` mode for block-sparse rigid articulation joint solves on CPU and CUDA.
+- Add opt-in coupled revolute-joint armature to the experimental block-sparse `SolverVBD` articulation solve.
 - Add `ModelBuilder.add_articulation(..., allow_closed_loops=True)` for maximal-coordinate solvers that support loop-closing joints directly.
 - Add URDF importer support for the nonstandard `ball` and `spherical` joint type extensions.
 - Add reduced elastic bodies to `SolverVBD`: `ModelBuilder.add_body_elastic()` and `add_link_elastic()` create a body with a floating frame plus reduced modal coordinates owned by a `JointType.ELASTIC` joint, with modal bases supplied via `ModalBasis`, `ModalGeneratorBeam`, `ModalGeneratorFEM`, `ModalGeneratorPOD`, or `ModalGeneratorSampled`. Elastic links transmit deformation through ordinary joints (including the clamp moment carried by `ModalBasis.sample_psi` angular mode shapes) and through rigid surface contacts, couple to their floating frame's gravity, acceleration, centrifugal and Coriolis terms, and render as deformed meshes with per-vertex strain coloring.

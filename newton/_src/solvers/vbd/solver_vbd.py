@@ -144,8 +144,10 @@ class SolverVBD(SolverBase):
           :attr:`~newton.Model.joint_limit_ke`/:attr:`~newton.Model.joint_limit_kd` are supported
           for REVOLUTE, PRISMATIC, and D6 joints.
         - :attr:`~newton.Control.joint_f` (feedforward forces) is supported.
-        - Not supported: :attr:`~newton.Model.joint_armature`, :attr:`~newton.Model.joint_friction`,
-          :attr:`~newton.Model.joint_effort_limit`, :attr:`~newton.Model.joint_velocity_limit`,
+        - Revolute :attr:`~newton.Model.joint_armature` is supported by the experimental
+          block-sparse articulation solve when ``rigid_joint_armature=True``.
+        - Not supported: :attr:`~newton.Model.joint_friction`, :attr:`~newton.Model.joint_effort_limit`,
+          :attr:`~newton.Model.joint_velocity_limit`,
           :attr:`~newton.Model.joint_target_mode`, equality constraints, mimic constraints.
 
         See :ref:`Joint feature support` for the full comparison across solvers.
@@ -265,6 +267,7 @@ class SolverVBD(SolverBase):
         rigid_joint_linear_kd: float = 0.0,  # Absolute damping for non-cable linear joint constraints
         rigid_joint_angular_kd: float = 0.0,  # Absolute damping for non-cable angular joint constraints
         rigid_joint_adaptive_stiffness: bool = True,  # If False, pin joint penalties to their ceilings (deterministic stiffness)
+        rigid_joint_armature: bool = False,
         elastic_contact_relaxation: float = 0.6,  # Under-relaxation for elastic modal updates when rigid contacts are present
         rigid_enable_dahl_friction: bool | None = None,  # Deprecated: controlled by model attributes
         rigid_articulation_solve: str = "local",
@@ -377,6 +380,9 @@ class SolverVBD(SolverBase):
                 Negative values are clamped to 0.
             rigid_joint_angular_kd: Damping coefficient for non-cable angular joint constraints [N·m·s/rad].
                 Negative values are clamped to 0.
+            rigid_joint_armature: Whether the experimental block-sparse articulation solve includes revolute
+                joint armature as coupled relative-coordinate inertia. This option is only supported with
+                ``rigid_articulation_solve="block_sparse_joints"``.
             rigid_enable_dahl_friction: Deprecated and ignored. Dahl friction is controlled
                 by ``model.vbd.dahl_eps_max`` / ``model.vbd.dahl_tau``.
             rigid_articulation_solve: Rigid articulation solve mode. ``"local"`` uses the existing
@@ -465,9 +471,12 @@ class SolverVBD(SolverBase):
                 "rigid_articulation_diagonal_regularization must be non-negative, "
                 f"got {rigid_articulation_diagonal_regularization}"
             )
+        if rigid_joint_armature and rigid_articulation_solve != "block_sparse_joints":
+            raise ValueError("rigid_joint_armature requires rigid_articulation_solve='block_sparse_joints'")
         self.rigid_articulation_solve = rigid_articulation_solve
         self.rigid_articulation_relaxation = rigid_articulation_relaxation
         self.rigid_articulation_diagonal_regularization = rigid_articulation_diagonal_regularization
+        self.rigid_joint_armature = rigid_joint_armature
 
         # Rigid integration mode: when True, rigid bodies are integrated by an external
         # solver (one-way coupling). SolverVBD will not move rigid bodies, but can still
@@ -3582,6 +3591,7 @@ class SolverVBD(SolverBase):
             self.joint_rest_angle,
             model.joint_target_ke,
             model.joint_target_kd,
+            model.joint_armature,
             control.joint_target_q,
             control.joint_target_qd,
             model.joint_limit_lower,
@@ -3593,6 +3603,7 @@ class SolverVBD(SolverBase):
             self.joint_C0_lin,
             self.joint_C0_ang,
             self.joint_is_hard,
+            self.rigid_joint_armature,
             self.rigid_joint_alpha,
             model.body_elastic_index,
             model.elastic_joint,
@@ -3646,6 +3657,7 @@ class SolverVBD(SolverBase):
                     state_in.body_q,
                     self.body_q_prev,
                     model.body_q,
+                    self.body_inertia_q,
                     model.body_com,
                     model.joint_type,
                     model.joint_enabled,
@@ -3665,6 +3677,7 @@ class SolverVBD(SolverBase):
                     self.joint_rest_angle,
                     model.joint_target_ke,
                     model.joint_target_kd,
+                    model.joint_armature,
                     control.joint_target_q,
                     control.joint_target_qd,
                     model.joint_limit_lower,
@@ -3676,6 +3689,7 @@ class SolverVBD(SolverBase):
                     self.joint_C0_lin,
                     self.joint_C0_ang,
                     self.joint_is_hard,
+                    self.rigid_joint_armature,
                     self.rigid_joint_alpha,
                     model.body_elastic_index,
                     model.elastic_joint,
