@@ -1,0 +1,174 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage{amsmath,amssymb,bm}
+\usepackage[margin=2.0cm]{geometry}
+\usepackage{parskip}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{listings}
+
+\setlength{\parindent}{0pt}
+\lstset{basicstyle=\ttfamily\footnotesize, frame=single, language=Python, aboveskip=4pt, belowskip=4pt}
+
+\title{\vspace{-1.2cm}\textbf{The Indefinite Block in the Unified Elastic Solve}}
+\author{\normalsize Newton Physics Engine \quad|\quad \texttt{reduced-elastic-sparse-tests}}
+\date{\normalsize August 2026}
+
+\begin{document}
+\maketitle
+\vspace{-0.8cm}
+
+\section*{What was wrong}
+
+A reduced elastic body is a floating frame ($6$ DOF) plus $n_m$ modal
+coordinates. Commit \texttt{06275246} merged the two into one $(6+n_m)$ dense
+block. Positive definiteness of that block requires its three partitions
+$\mathbf{H}_{ff}$, $\mathbf{H}_{fm}$, $\mathbf{H}_{mm}$ to come from a single
+$\mathbf{J}^\top\mathbf{K}\mathbf{J}$. They did not.
+
+\textbf{Each elastic contact was evaluated twice, on different geometry.}
+
+\begin{center}\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+ & $\mathbf{H}_{ff}$ (frame) & $\mathbf{H}_{fm},\ \mathbf{H}_{mm}$ (cross, modal) \\
+\midrule
+evaluator & \texttt{...\_from\_collision} & \texttt{...\_from\_world\_points} \\
+contact point & local point $\times$ rigid \texttt{body\_q} & deformed, sample $+\sum_i q_i\bm{\phi}_i$ \\
+levers & split (skeleton / anchor) & one lever \\
+damping gate & rigid approach rate & deformed approach rate \\
+friction slip & rigid anchor & deformed sample \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The caller computed the deformed point, used it for the scalar penetration, and
+then passed the \emph{local} point to the frame evaluator. Everything entering
+$\mathbf{H}_{ff}$ was therefore computed on the undeformed blade.
+
+Fitting a contact stiffness
+$\mathbf{K}=a(\mathbf{I}-\mathbf{n}\mathbf{n}^\top)+b\,\mathbf{n}\mathbf{n}^\top$
+separately from each side over $62$ blocks gives
+$a_{\text{elastic}}/a_{\text{frame}}$ between $0.4$ and $14$, median $0.6$ ---
+not a constant, so not a units or duplication bug. The resulting deficiency is
+two-dimensional in $90\%$ of indefinite blocks and lies in the friction tangent
+plane (overlap with the contact normal $0.000$--$0.021$).
+
+Consequences: $\lambda_{\min}$ down to $-6.5\times10^{8}$;
+\texttt{wp.tile\_cholesky} returns a finite but meaningless factor; the only
+guard is an \texttt{isfinite} check that never fires; the applied step has
+$\|\mathbf{H}\bm{\delta}+\mathbf{g}\|/\|\mathbf{g}\|\approx 1$ instead of
+$10^{-6}$. Both rigid solve paths were affected.
+
+The sparse path added a second, independent defect. It solved the full
+articulation including the blade and then \emph{discarded} the elastic delta
+without pinning the block first, so applying only $\bm{\delta}_r$ left
+\[
+  \mathbf{g}_r^{+} = (1-\omega)\,\mathbf{g}_r - \omega\,\mathbf{H}_{re}\,\bm{\delta}_e,
+  \qquad \|\mathbf{H}_{re}\|\sim k = 10^{6},
+\]
+a spurious force on every neighbour each iteration. That is why the sparse path
+reached $10^{15}$ while the local path, running the same broken block, stayed
+bounded.
+
+\textbf{Why it surfaced only after the port.} Both evaluators, and the
+inconsistency between them, are byte-identical before and after
+\texttt{06275246}; the port changed neither. Before the merge the two results
+went into \emph{separate} matrices, each individually positive definite, so the
+disagreement was a block Gauss--Seidel splitting error that cost convergence
+rate and nothing else. The merge put them in one matrix and silently promoted it
+into a violated definiteness precondition. This is unique to this branch: the
+upstream elastic branches have no AVBD contact --- no dual, no hard contacts, no
+stabilization --- so both call sites go through the deformed-point evaluator and
+\texttt{...\_from\_collision} is never called at all.
+
+\section*{What the changes do}
+
+\textbf{1. One evaluation, three projections} (\texttt{rigid\_vbd\_kernels.py}).
+A new \texttt{evaluate\_contact\_force\_hessian\_blocks} dispatches on whether
+the contact is elastic:
+
+\begin{lstlisting}
+if is_elastic:
+    return evaluate_rigid_contact_from_world_points(...)  # deformed points
+return evaluate_rigid_contact_from_collision(...)         # rigid, unchanged
+\end{lstlisting}
+
+Both frame call sites (\texttt{accumulate\_body\_body\_contacts\_per\_body},
+\texttt{compute\_rigid\_contact\_forces}) now go through it, passing the
+deformed points they already computed and previously discarded. An elastic
+contact is therefore evaluated by the same function with the same arguments on
+the frame side and the modal side, so the block is a partition of one
+$\mathbf{J}^\top\mathbf{K}\mathbf{J}$ by construction. Rigid contacts keep
+\texttt{from\_collision} untouched, with AVBD's split levers and duals.
+
+\textbf{2. The frame is excluded from the sparse system}
+(\texttt{rigid\_sparse\_articulation\_kernels.py}). The mechanism already
+existed for kinematic bodies; elastic bodies now use it:
+
+\begin{lstlisting}
+if body_inv_mass[body] == 0.0 or body_elastic_index[body] >= 0:
+    diag = _mat66_identity(1.0e30)
+\end{lstlisting}
+
+The body stays in the sparse structure, so joints reaching it still assemble and
+still act on its neighbours, but its own six rows are pinned, the solve returns
+$\bm{\delta}_e\approx 0$, and the delta is not applied. The port had the discard
+without the pin, which is what made $\mathbf{H}_{re}\bm{\delta}_e$ large; with
+the pin the discarded delta is genuinely zero. This mirrors the local path,
+where \texttt{solve\_rigid\_body} has always returned early on elastic bodies.
+
+\textbf{3. The elastic solve is unified in both paths}
+(\texttt{solver\_vbd.py}). \texttt{solve\_frame=True} at all three sparse launch
+sites. Frame and modes are solved together, once, from one contact evaluation,
+in both the local and the block-sparse path.
+
+\section*{Verification}
+
+\begin{center}\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+ & \textbf{before} & \textbf{frame excluded} & \textbf{unified (now)} \\
+\midrule
+indefinite blocks (of $320$) & $132$ & $0$ (trivially $\mathbf{I}_6$) & $\mathbf{0}$ \\
+$\lambda_{\min}$             & $-6.5\times10^{8}$ & $+1.0$ & $+1.88\times10^{5}$ \\
+linear residual              & $0.47$--$1.25$ & $10^{-7}$ & $\le 1.2\times10^{-5}$ \\
+max Cauchy--Schwarz ratio    & $3.66$ & $0$ & $\mathbf{0.9962}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The sparse and local paths now produce identical block statistics. The
+Cauchy--Schwarz ratio sits just inside the bound and never crosses it, which is
+what a genuine $\mathbf{J}^\top\mathbf{K}\mathbf{J}$ looks like when a contact
+couples the frame and the modes almost maximally. Over $90$ frames both paths
+stay bounded and agree (base $z$: sparse $0.640\to0.436$, local
+$0.642\to0.187$). \texttt{test\_vbd\_sparse\_articulation} passes $14/14$.
+
+\section*{Still open}
+
+\begin{enumerate}[nosep,leftmargin=*]
+  \item \textbf{No guard in the tiled solve.} The \texttt{isfinite} check should
+        be a residual check ($\|\mathbf{H}\bm{\delta}+\mathbf{g}\| >
+        \varepsilon\|\mathbf{g}\|$ falling back to Jacobi). It would have caught
+        this on the first iteration of the first substep.
+  \item \textbf{No regression test.} A drop test cannot reproduce it: the
+        deficiency is in the friction tangent plane and needs lateral slip. The
+        cheapest real test asserts $\lambda_{\min}>0$ on the assembled block.
+  \item \texttt{test\_reduced\_elastic\_body} reported $17$ failures before this
+        work; whether they predate it is unconfirmed.
+\end{enumerate}
+
+\section*{Dead ends}
+\small
+Recorded so they are not re-run: stiff two-block Gauss--Seidel ($\rho<1$
+throughout, and a spectral radius cannot see a $\bm{\delta}$ that does not solve
+$\mathbf{H}\bm{\delta}=-\mathbf{g}$); stale force accumulators; the implicit
+frame/modal mass coupling; the neighbour solver ($0.9892$ vs.\ $0.9893$); sign
+or index errors in the cross blocks (each is a correct derivative \emph{of its
+own evaluation}); the minimal 2D model, too small to reproduce anything. Pinning
+the sparse block alone was tried early and still diverged: necessary, not
+sufficient.
+
+\end{document}

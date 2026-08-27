@@ -1597,6 +1597,220 @@ def test_vbd_elastic_contact_overflow_assembles_consistent_block(test, device):
     test.assertGreater(float(np.linalg.eigvalsh(overflow_matrix)[0]), 0.0)
 
 
+def _build_elastic_sliding_contact_model(device):
+    """Elastic body sliding on frictional ground with a lateral mode shape.
+
+    The frame and modal partitions of the elastic block are projections of one contact
+    force, so the block is only positive semi-definite while both are built from the same
+    contact evaluation. A *lateral* mode shape is what exposes a disagreement: it moves the
+    contact point tangentially, and the frame/modal cross terms of a contact Hessian are
+    dominated by the friction stiffness in that plane.
+    """
+
+    def lateral_shape_fn(_x):
+        return np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
+
+    cfg = newton.ModelBuilder.ShapeConfig()
+    cfg.ke = 1.0e6
+    cfg.kd = 0.0
+    cfg.mu = 0.8
+    cfg.margin = 0.0
+    cfg.gap = 0.0
+
+    builder = newton.ModelBuilder(gravity=-9.81, up_axis="Z")
+    builder.add_ground_plane(cfg=cfg)
+    body = builder.add_body_elastic(
+        xform=wp.transform(wp.vec3(0.0, 0.0, 0.048), wp.quat_identity()),
+        mass=1.0,
+        inertia=np.eye(3, dtype=np.float32) * 0.01,
+        mode_count=1,
+        mode_mass=[1.0],
+        mode_stiffness=[200.0],
+        mode_damping=[0.0],
+        mode_q=[0.02],
+        mode_shape_fn=lateral_shape_fn,
+        is_kinematic=False,
+    )
+    builder.add_shape_box(body, hx=0.05, hy=0.05, hz=0.05, cfg=cfg)
+    builder.body_qd[body] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+    builder.color()
+    return builder.finalize(device=device), body
+
+
+def _step_elastic_sliding_contact(device, articulation_solve: str, steps: int = 4):
+    """Step the sliding contact model, returning every assembled elastic block."""
+    model, _body = _build_elastic_sliding_contact_model(device)
+    state_0 = model.state()
+    state_1 = model.state()
+    contacts = model.contacts()
+    control = model.control()
+
+    solver = newton.solvers.SolverVBD(
+        model,
+        iterations=4,
+        rigid_articulation_solve=articulation_solve,
+        rigid_contact_k_start=1.0e6,
+        elastic_contact_relaxation=1.0,
+    )
+
+    blocks = []
+    for _ in range(steps):
+        model.collide(state_0, contacts)
+        in_contact = int(contacts.rigid_contact_count.numpy()[0]) > 0
+        state_0.clear_forces()
+        solver.step(state_0, state_1, control, contacts, 0.002)
+        if in_contact:
+            upper = solver.elastic_body_block_matrix.numpy()[0]
+            metrics = solver.elastic_mode_solve_metrics()
+            blocks.append(
+                (
+                    np.triu(upper) + np.triu(upper, 1).T,
+                    {key: float(value[0]) for key, value in metrics.items()},
+                )
+            )
+        state_0, state_1 = state_1, state_0
+
+    return blocks, state_0
+
+
+def test_vbd_elastic_frictional_contact_block_is_positive_definite(test, device):
+    """The merged (6 + n_m) block must be a partition of a single J^T K J.
+
+    Building the frame rows from an undeformed contact evaluation and the cross/modal rows
+    from a deformed one makes the block indefinite, which no genuine J^T K J can be. The
+    Cauchy-Schwarz assertion is the sharper of the two: it holds entrywise for any positive
+    semi-definite matrix and fails at ratio 3.2 when the two evaluations disagree.
+    """
+    for articulation_solve in ("local", "block_sparse_joints"):
+        blocks, _state = _step_elastic_sliding_contact(device, articulation_solve)
+        test.assertGreater(len(blocks), 0)
+
+        for matrix, _metrics in blocks:
+            test.assertTrue(bool(np.all(np.isfinite(matrix))))
+            test.assertGreater(float(np.linalg.eigvalsh(matrix)[0]), 0.0)
+
+            mode_count = matrix.shape[0] - 6
+            for row in range(6):
+                for mode in range(mode_count):
+                    bound = np.sqrt(matrix[row, row] * matrix[6 + mode, 6 + mode])
+                    test.assertLessEqual(abs(matrix[row, 6 + mode]), bound * (1.0 + 1.0e-5))
+
+
+def test_vbd_elastic_frictional_contact_block_solves_its_system(test, device):
+    """The applied step must actually solve the block it was assembled from.
+
+    wp.tile_cholesky factorises an indefinite block without failing and returns a finite but
+    meaningless factor, and the tiled solve only guards against non-finite entries. A linear
+    residual of order one relative to the initial gradient is what that looks like from the
+    outside.
+    """
+    for articulation_solve in ("local", "block_sparse_joints"):
+        blocks, _state = _step_elastic_sliding_contact(device, articulation_solve)
+        test.assertGreater(len(blocks), 0)
+
+        for _matrix, metrics in blocks:
+            initial = metrics["initial_residual_norm"]
+            test.assertGreater(initial, 0.0)
+            test.assertLess(metrics["solve_residual_norm"] / initial, 1.0e-4)
+
+
+def _build_articulated_elastic_contact_model(device):
+    """Rigid carrier jointed to a sliding elastic body, so the sparse path has an articulation.
+
+    A lone elastic body degenerates the block-sparse solve. Attaching a rigid parent puts a
+    stiff joint across the frame the elastic block owns, which is what the articulation must
+    treat as an anchor.
+    """
+
+    def lateral_shape_fn(_x):
+        return np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
+
+    cfg = newton.ModelBuilder.ShapeConfig()
+    cfg.ke = 1.0e6
+    cfg.kd = 0.0
+    cfg.mu = 0.8
+    cfg.margin = 0.0
+    cfg.gap = 0.0
+
+    builder = newton.ModelBuilder(gravity=-9.81, up_axis="Z")
+    builder.add_ground_plane(cfg=cfg)
+
+    carrier = builder.add_body(
+        xform=wp.transform(wp.vec3(0.0, 0.0, 0.25), wp.quat_identity()),
+        mass=2.0,
+        inertia=np.eye(3, dtype=np.float32) * 0.02,
+    )
+    body = builder.add_body_elastic(
+        xform=wp.transform(wp.vec3(0.0, 0.0, 0.048), wp.quat_identity()),
+        mass=1.0,
+        inertia=np.eye(3, dtype=np.float32) * 0.01,
+        mode_count=1,
+        mode_mass=[1.0],
+        mode_stiffness=[200.0],
+        mode_damping=[0.0],
+        mode_q=[0.02],
+        mode_shape_fn=lateral_shape_fn,
+        is_kinematic=False,
+    )
+    builder.add_shape_box(body, hx=0.05, hy=0.05, hz=0.05, cfg=cfg)
+    builder.add_joint_revolute(
+        parent=carrier,
+        child=body,
+        axis=(0.0, 1.0, 0.0),
+        parent_xform=wp.transform(wp.vec3(0.0, 0.0, -0.202), wp.quat_identity()),
+        child_xform=wp.transform(wp.vec3(0.0, 0.0, 0.0), wp.quat_identity()),
+    )
+    builder.body_qd[body] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+    builder.color()
+    return builder.finalize(device=device), body
+
+
+def test_vbd_elastic_frame_is_pinned_in_sparse_articulation(test, device):
+    """The articulation must not compute a frame delta for a body whose frame it does not own.
+
+    A reduced elastic body's frame is solved in its own (6 + n_m) block. Leaving live rows in
+    the articulation and discarding the resulting delta puts a spurious force of size
+    ||H_re delta_e|| on every neighbour, so the rows are pinned instead and the delta the
+    articulation produces for that body is zero.
+    """
+    model, body = _build_articulated_elastic_contact_model(device)
+    state_0 = model.state()
+    state_1 = model.state()
+    contacts = model.contacts()
+    control = model.control()
+
+    solver = newton.solvers.SolverVBD(
+        model,
+        iterations=4,
+        rigid_articulation_solve="block_sparse_joints",
+        rigid_contact_k_start=1.0e6,
+        elastic_contact_relaxation=1.0,
+    )
+
+    for _ in range(4):
+        model.collide(state_0, contacts)
+        state_0.clear_forces()
+        solver.step(state_0, state_1, control, contacts, 0.002)
+        state_0, state_1 = state_1, state_0
+
+    layout = solver.rigid_articulation_sparse_layout
+    test.assertIsNotNone(layout)
+    articulation_bodies = layout.articulation_bodies.numpy()
+    local_index = int(np.flatnonzero(articulation_bodies == body)[0])
+
+    delta_scalar = solver.rigid_articulation_sparse_delta_scalar
+    if delta_scalar is not None:
+        delta = delta_scalar.numpy().reshape(-1, 6)
+    else:
+        delta = solver.rigid_articulation_sparse_delta.numpy().reshape(-1, 6)
+    elastic_delta = float(np.max(np.abs(delta[local_index])))
+    other = np.delete(np.arange(delta.shape[0]), local_index)
+    neighbour_delta = float(np.max(np.abs(delta[other])))
+
+    test.assertGreater(neighbour_delta, 0.0)
+    test.assertLess(elastic_delta, 1.0e-12)
+
+
 def test_elastic_contact_local_mat33_projection_matches_world(test, device):
     del device
 
@@ -3835,6 +4049,24 @@ for device in devices:
         TestReducedElasticBody,
         "test_vbd_elastic_contact_overflow_assembles_consistent_block",
         test_vbd_elastic_contact_overflow_assembles_consistent_block,
+        devices=[device],
+    )
+    add_function_test(
+        TestReducedElasticBody,
+        "test_vbd_elastic_frictional_contact_block_is_positive_definite",
+        test_vbd_elastic_frictional_contact_block_is_positive_definite,
+        devices=[device],
+    )
+    add_function_test(
+        TestReducedElasticBody,
+        "test_vbd_elastic_frictional_contact_block_solves_its_system",
+        test_vbd_elastic_frictional_contact_block_solves_its_system,
+        devices=[device],
+    )
+    add_function_test(
+        TestReducedElasticBody,
+        "test_vbd_elastic_frame_is_pinned_in_sparse_articulation",
+        test_vbd_elastic_frame_is_pinned_in_sparse_articulation,
         devices=[device],
     )
     add_function_test(

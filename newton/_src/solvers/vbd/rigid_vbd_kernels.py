@@ -2753,7 +2753,7 @@ def accumulate_body_body_contacts_per_body(
         contact_normal = rigid_contact_normal[contact_idx]
         # Normal C_n uses the unprojected (skeleton) points: ``thickness`` already accounts
         # for the radial extent, so adding the offset here would double-count it.
-        cp0_world, _cp0_world_prev = evaluate_contact_point_world(
+        cp0_world, cp0_world_prev = evaluate_contact_point_world(
             b0,
             cp0_local,
             rigid_contact_elastic_sample0[contact_idx],
@@ -2769,7 +2769,7 @@ def accumulate_body_body_contacts_per_body(
             elastic_shape_vertex_phi,
             elastic_max_mode_count,
         )
-        cp1_world, _cp1_world_prev = evaluate_contact_point_world(
+        cp1_world, cp1_world_prev = evaluate_contact_point_world(
             b1,
             cp1_local,
             rigid_contact_elastic_sample1[contact_idx],
@@ -2802,7 +2802,8 @@ def accumulate_body_body_contacts_per_body(
         # elastic contacts out of AVBD: material ke instead of the adaptive
         # penalty, no lambda, no C0 stabilization.
         contact_hard = hard_contacts
-        if is_elastic_contact(rigid_contact_elastic_sample0, rigid_contact_elastic_sample1, contact_idx):
+        is_elastic = is_elastic_contact(rigid_contact_elastic_sample0, rigid_contact_elastic_sample1, contact_idx)
+        if is_elastic:
             contact_hard = 0
             k = contact_material_ke[contact_idx]
 
@@ -2839,7 +2840,8 @@ def accumulate_body_body_contacts_per_body(
             h_ll_1,
             h_al_1,
             h_aa_1,
-        ) = evaluate_rigid_contact_from_collision(
+        ) = evaluate_contact_force_hessian_blocks(
+            is_elastic,
             b0,
             b1,
             body_q,
@@ -2849,6 +2851,10 @@ def accumulate_body_body_contacts_per_body(
             cp1_local,
             cp0_offset_local,
             cp1_offset_local,
+            cp0_world,
+            cp1_world,
+            cp0_world_prev,
+            cp1_world_prev,
             contact_normal,
             C_eff,
             k,
@@ -2968,7 +2974,7 @@ def compute_rigid_contact_forces(
 
     # Normal C_n uses the unprojected (skeleton) points: ``thickness`` already accounts
     # for the radial extent, so adding the offset here would double-count it.
-    cp0_world, _cp0_world_prev = evaluate_contact_point_world(
+    cp0_world, cp0_world_prev = evaluate_contact_point_world(
         b0,
         cp0_local,
         rigid_contact_elastic_sample0[contact_idx],
@@ -2984,7 +2990,7 @@ def compute_rigid_contact_forces(
         elastic_shape_vertex_phi,
         elastic_max_mode_count,
     )
-    cp1_world, _cp1_world_prev = evaluate_contact_point_world(
+    cp1_world, cp1_world_prev = evaluate_contact_point_world(
         b1,
         cp1_local,
         rigid_contact_elastic_sample1[contact_idx],
@@ -3021,7 +3027,8 @@ def compute_rigid_contact_forces(
     # solved as plain penalty contacts at the material stiffness so the frame
     # block matches the modal block.
     contact_hard = hard_contacts
-    if is_elastic_contact(rigid_contact_elastic_sample0, rigid_contact_elastic_sample1, contact_idx):
+    is_elastic = is_elastic_contact(rigid_contact_elastic_sample0, rigid_contact_elastic_sample1, contact_idx)
+    if is_elastic:
         contact_hard = 0
         k = contact_material_ke[contact_idx]
 
@@ -3054,7 +3061,8 @@ def compute_rigid_contact_forces(
         _h_ll_1,
         _h_al_1,
         _h_aa_1,
-    ) = evaluate_rigid_contact_from_collision(
+    ) = evaluate_contact_force_hessian_blocks(
+        is_elastic,
         int(b0),
         int(b1),
         body_q,
@@ -3064,6 +3072,10 @@ def compute_rigid_contact_forces(
         cp1_local,
         cp0_offset_local,
         cp1_offset_local,
+        cp0_world,
+        cp1_world,
+        cp0_world_prev,
+        cp1_world_prev,
         contact_normal,
         C_eff,
         k,
@@ -4569,6 +4581,87 @@ def evaluate_rigid_contact_from_world_points(
     h_ll_b = K_total
 
     return (force_a, torque_a, h_ll_a, h_al_a, h_aa_a, force_b, torque_b, h_ll_b, h_al_b, h_aa_b)
+
+
+@wp.func
+def evaluate_contact_force_hessian_blocks(
+    is_elastic: bool,
+    body_a_index: int,
+    body_b_index: int,
+    body_q: wp.array[wp.transform],
+    body_q_prev: wp.array[wp.transform],
+    body_com: wp.array[wp.vec3],
+    contact_point_a_local: wp.vec3,
+    contact_point_b_local: wp.vec3,
+    contact_offset_a_local: wp.vec3,
+    contact_offset_b_local: wp.vec3,
+    x_c_a_now: wp.vec3,
+    x_c_b_now: wp.vec3,
+    x_c_a_prev: wp.vec3,
+    x_c_b_prev: wp.vec3,
+    contact_normal: wp.vec3,
+    penetration_depth: float,
+    contact_ke: float,
+    contact_ke_t: float,
+    contact_kd: float,
+    contact_lam: wp.vec3,
+    friction_mu: float,
+    friction_epsilon: float,
+    hard_contact: int,
+    dt: float,
+    friction_c0: wp.vec3,
+):
+    """Force and 3x3 Hessian blocks for one contact, dispatched on whether it is elastic.
+
+    A reduced elastic contact must go through :func:`evaluate_rigid_contact_from_world_points`
+    with the deformed contact points, because the same contact is projected onto the modal
+    coordinates by ``_accumulate_elastic_contact_modes`` through that identical call. The
+    frame and modal partitions of the elastic block are then partitions of one
+    ``J^T K J``, which is what makes that block positive semi-definite. Evaluating the frame
+    side from the undeformed points instead leaves the two partitions inconsistent and the
+    block indefinite, whatever the two evaluations individually agree on.
+    """
+    if is_elastic:
+        return evaluate_rigid_contact_from_world_points(
+            body_a_index,
+            body_b_index,
+            body_q,
+            body_com,
+            x_c_a_now,
+            x_c_b_now,
+            x_c_a_prev,
+            x_c_b_prev,
+            contact_normal,
+            penetration_depth,
+            contact_ke,
+            contact_kd,
+            friction_mu,
+            friction_epsilon,
+            dt,
+        )
+
+    return evaluate_rigid_contact_from_collision(
+        body_a_index,
+        body_b_index,
+        body_q,
+        body_q_prev,
+        body_com,
+        contact_point_a_local,
+        contact_point_b_local,
+        contact_offset_a_local,
+        contact_offset_b_local,
+        contact_normal,
+        penetration_depth,
+        contact_ke,
+        contact_ke_t,
+        contact_kd,
+        contact_lam,
+        friction_mu,
+        friction_epsilon,
+        hard_contact,
+        dt,
+        friction_c0,
+    )
 
 
 @wp.func

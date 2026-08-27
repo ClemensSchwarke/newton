@@ -3630,6 +3630,7 @@ class SolverVBD(SolverBase):
                     state_in.body_q,
                     model.body_mass,
                     self.body_inv_mass_effective,
+                    model.body_elastic_index,
                     model.body_com,
                     model.body_inertia,
                     self.body_inertia_q,
@@ -3756,9 +3757,9 @@ class SolverVBD(SolverBase):
                 dim=layout.articulation_body_count,
                 inputs=[
                     layout.articulation_bodies,
-                    model.body_elastic_index,
                     state_in.body_q,
                     self.body_inv_mass_effective,
+                    model.body_elastic_index,
                     model.body_com,
                     self.rigid_articulation_relaxation,
                     self.rigid_articulation_sparse_delta_scalar,
@@ -3770,9 +3771,11 @@ class SolverVBD(SolverBase):
 
         wp.copy(state_in.body_q, state_out.body_q)
 
-        # The articulation solve leaves reduced elastic frames untouched, so the coupled
-        # frame/modal block is solved here over every elastic body once the rigid poses for
-        # this iteration are in place.
+        # The elastic block owns the reduced elastic frame in both rigid solve paths: frame and
+        # modal coordinates are solved together, from one contact evaluation, so the block is a
+        # partition of a single J^T K J. The articulation pins those bodies
+        # (see _body_diagonal_contribution) and treats them as anchors for the joints reaching
+        # them, so the frame is solved exactly once.
         if model.elastic_body_count > 0:
             rigid_contact_max, rigid_contact_count, elastic_body_relaxation = self._elastic_contact_inputs(contacts)
             wp.launch(
