@@ -3279,6 +3279,7 @@ def solve_rigid_body(
     joint_dof_dim: wp.array2d[int],
     joint_rest_angle: wp.array[float],
     body_elastic_index: wp.array[wp.int32],
+    elastic_frame_in_block: bool,
     elastic_joint: wp.array[wp.int32],
     elastic_mode_count: wp.array[wp.int32],
     joint_parent_elastic_endpoint: wp.array[wp.int32],
@@ -3343,7 +3344,7 @@ def solve_rigid_body(
 
     q_current = body_q[body_index]
 
-    if body_elastic_index[body_index] >= 0:
+    if elastic_frame_in_block and body_elastic_index[body_index] >= 0:
         body_q_new[body_index] = q_current
         return
 

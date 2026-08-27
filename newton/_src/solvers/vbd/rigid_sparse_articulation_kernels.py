@@ -1183,6 +1183,7 @@ def _body_diagonal_contribution(
     body_mass: wp.array[float],
     body_inv_mass: wp.array[float],
     body_elastic_index: wp.array[wp.int32],
+    elastic_frame_in_block: bool,
     body_com: wp.array[wp.vec3],
     body_inertia: wp.array[wp.mat33],
     body_inertia_q: wp.array[wp.transform],
@@ -1197,7 +1198,7 @@ def _body_diagonal_contribution(
 
     diag = mat66f(0.0)
     rhs_value = vec6f(0.0)
-    if body_inv_mass[body] == 0.0 or body_elastic_index[body] >= 0:
+    if body_inv_mass[body] == 0.0 or (elastic_frame_in_block and body_elastic_index[body] >= 0):
         diag = _mat66_identity(1.0e30)
     else:
         q_star = body_inertia_q[body]
@@ -1246,6 +1247,7 @@ def _apply_sparse_delta_value_to_body(
     body_q: wp.array[wp.transform],
     body_inv_mass: wp.array[float],
     body_elastic_index: wp.array[wp.int32],
+    elastic_frame_in_block: bool,
     body_com: wp.array[wp.vec3],
     update_relaxation: float,
     dx_in: vec6f,
@@ -1253,7 +1255,7 @@ def _apply_sparse_delta_value_to_body(
 ):
     body = articulation_bodies[local_body]
     q_current = body_q[body]
-    if body_inv_mass[body] == 0.0 or body_elastic_index[body] >= 0:
+    if body_inv_mass[body] == 0.0 or (elastic_frame_in_block and body_elastic_index[body] >= 0):
         body_q_new[body] = q_current
     else:
         dx = dx_in * update_relaxation
@@ -1281,6 +1283,7 @@ def _apply_sparse_delta_to_body(
     body_q: wp.array[wp.transform],
     body_inv_mass: wp.array[float],
     body_elastic_index: wp.array[wp.int32],
+    elastic_frame_in_block: bool,
     body_com: wp.array[wp.vec3],
     update_relaxation: float,
     delta: wp.array[vec6f],
@@ -1292,6 +1295,7 @@ def _apply_sparse_delta_to_body(
         body_q,
         body_inv_mass,
         body_elastic_index,
+        elastic_frame_in_block,
         body_com,
         update_relaxation,
         delta[local_body],
@@ -1325,6 +1329,7 @@ def assemble_articulation_body_diagonal(
     body_mass: wp.array[float],
     body_inv_mass: wp.array[float],
     body_elastic_index: wp.array[wp.int32],
+    elastic_frame_in_block: bool,
     body_com: wp.array[wp.vec3],
     body_inertia: wp.array[wp.mat33],
     body_inertia_q: wp.array[wp.transform],
@@ -1345,6 +1350,7 @@ def assemble_articulation_body_diagonal(
         body_mass,
         body_inv_mass,
         body_elastic_index,
+        elastic_frame_in_block,
         body_com,
         body_inertia,
         body_inertia_q,
@@ -1367,6 +1373,7 @@ def assemble_articulation_body_diagonal_scalar(
     body_mass: wp.array[float],
     body_inv_mass: wp.array[float],
     body_elastic_index: wp.array[wp.int32],
+    elastic_frame_in_block: bool,
     body_com: wp.array[wp.vec3],
     body_inertia: wp.array[wp.mat33],
     body_inertia_q: wp.array[wp.transform],
@@ -1387,6 +1394,7 @@ def assemble_articulation_body_diagonal_scalar(
         body_mass,
         body_inv_mass,
         body_elastic_index,
+        elastic_frame_in_block,
         body_com,
         body_inertia,
         body_inertia_q,
@@ -2157,6 +2165,7 @@ def apply_articulation_sparse_delta_scalar(
     body_q: wp.array[wp.transform],
     body_inv_mass: wp.array[float],
     body_elastic_index: wp.array[wp.int32],
+    elastic_frame_in_block: bool,
     body_com: wp.array[wp.vec3],
     update_relaxation: float,
     delta_scalar: wp.array[float],
@@ -2177,6 +2186,7 @@ def apply_articulation_sparse_delta_scalar(
         body_q,
         body_inv_mass,
         body_elastic_index,
+        elastic_frame_in_block,
         body_com,
         update_relaxation,
         dx,
@@ -2241,6 +2251,7 @@ def solve_articulation_sparse_serial(
     enable_joint_armature: bool,
     avbd_alpha: float,
     body_elastic_index: wp.array[wp.int32],
+    elastic_frame_in_block: bool,
     elastic_joint: wp.array[wp.int32],
     elastic_mode_count: wp.array[wp.int32],
     joint_parent_elastic_endpoint: wp.array[wp.int32],
@@ -2284,6 +2295,7 @@ def solve_articulation_sparse_serial(
                 body_mass,
                 body_inv_mass,
                 body_elastic_index,
+                elastic_frame_in_block,
                 body_com,
                 body_inertia,
                 body_inertia_q,
@@ -2886,6 +2898,7 @@ def solve_articulation_sparse_serial(
                 body_q,
                 body_inv_mass,
                 body_elastic_index,
+                elastic_frame_in_block,
                 body_com,
                 update_relaxation,
                 delta,
