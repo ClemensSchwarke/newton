@@ -1,0 +1,682 @@
+{
+  "unified|2x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 2,
+    "iterations": 2,
+    "PRDM": {
+      "squash": 16.079485416412354,
+      "rebound_height": 21.048475056886673,
+      "peak_fraction": 0.6416798269228601
+    },
+    "elastic": {
+      "squash": 14.87576961517334,
+      "rebound_height": 27.823615819215775,
+      "peak_fraction": 0.7476617557171485
+    },
+    "ms_per_frame": 3.27597656666209,
+    "ms_per_substep": 1.637988283331045
+  },
+  "unified|2x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 2,
+    "iterations": 5,
+    "PRDM": {
+      "squash": 13.01264762878418,
+      "rebound_height": 25.213468819856644,
+      "peak_fraction": 0.8210770271328875
+    },
+    "elastic": {
+      "squash": 13.075470924377441,
+      "rebound_height": 26.353348046541214,
+      "peak_fraction": 0.8101885904030358
+    },
+    "ms_per_frame": 5.582319649996255,
+    "ms_per_substep": 2.7911598249981275
+  },
+  "unified|2x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 2,
+    "iterations": 10,
+    "PRDM": {
+      "squash": 12.789130210876465,
+      "rebound_height": 25.26472881436348,
+      "peak_fraction": 0.8365770580074804
+    },
+    "elastic": {
+      "squash": 13.394773006439209,
+      "rebound_height": 26.840854436159134,
+      "peak_fraction": 0.8349549826232715
+    },
+    "ms_per_frame": 9.360853433342223,
+    "ms_per_substep": 4.6804267166711115
+  },
+  "unified|2x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 2,
+    "iterations": 20,
+    "PRDM": {
+      "squash": 12.786388397216797,
+      "rebound_height": 25.326181203126907,
+      "peak_fraction": 0.8339763384610719
+    },
+    "elastic": {
+      "squash": 13.384699821472168,
+      "rebound_height": 26.77135542035103,
+      "peak_fraction": 0.8314312928570377
+    },
+    "ms_per_frame": 16.883224799994423,
+    "ms_per_substep": 8.441612399997211
+  },
+  "unified|2x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 2,
+    "iterations": 40,
+    "PRDM": {
+      "squash": 12.746989727020264,
+      "rebound_height": 25.625336915254593,
+      "peak_fraction": 0.8397777438134275
+    },
+    "elastic": {
+      "squash": 13.386666774749756,
+      "rebound_height": 26.747513562440872,
+      "peak_fraction": 0.8312870200056436
+    },
+    "ms_per_frame": 31.65582590001274,
+    "ms_per_substep": 15.82791295000637
+  },
+  "unified|4x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 2,
+    "PRDM": {
+      "squash": 17.665743827819824,
+      "rebound_height": 12.951422482728958,
+      "peak_fraction": 0.5248013141802975
+    },
+    "elastic": {
+      "squash": 11.15727424621582,
+      "rebound_height": 35.08054092526436,
+      "peak_fraction": 0.535829726496303
+    },
+    "ms_per_frame": 6.8286979166714445,
+    "ms_per_substep": 1.7071744791678611
+  },
+  "unified|4x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 5,
+    "PRDM": {
+      "squash": 12.429237365722656,
+      "rebound_height": 21.575022488832474,
+      "peak_fraction": 0.8246695743175586
+    },
+    "elastic": {
+      "squash": 12.448549270629883,
+      "rebound_height": 38.5773666203022,
+      "peak_fraction": 0.843552005339741
+    },
+    "ms_per_frame": 11.5368077166598,
+    "ms_per_substep": 2.88420192916495
+  },
+  "unified|4x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 10,
+    "PRDM": {
+      "squash": 11.912524700164795,
+      "rebound_height": 31.637120991945267,
+      "peak_fraction": 0.9002658496571956
+    },
+    "elastic": {
+      "squash": 14.394640922546387,
+      "rebound_height": 34.913528710603714,
+      "peak_fraction": 0.9293423349462452
+    },
+    "ms_per_frame": 18.823119550006595,
+    "ms_per_substep": 4.705779887501649
+  },
+  "unified|4x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 20,
+    "PRDM": {
+      "squash": 11.866986751556396,
+      "rebound_height": 31.83167055249214,
+      "peak_fraction": 0.9050460591097246
+    },
+    "elastic": {
+      "squash": 14.035999774932861,
+      "rebound_height": 34.87865999341011,
+      "peak_fraction": 0.8999967716336822
+    },
+    "ms_per_frame": 33.420501533328206,
+    "ms_per_substep": 8.355125383332052
+  },
+  "unified|4x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 40,
+    "PRDM": {
+      "squash": 11.875629425048828,
+      "rebound_height": 31.907547265291214,
+      "peak_fraction": 0.9063606821567558
+    },
+    "elastic": {
+      "squash": 14.048218727111816,
+      "rebound_height": 34.74395349621773,
+      "peak_fraction": 0.8987803099517921
+    },
+    "ms_per_frame": 63.51100178333885,
+    "ms_per_substep": 15.877750445834712
+  },
+  "unified|8x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 2,
+    "PRDM": {
+      "squash": 16.614854335784912,
+      "rebound_height": 28.64997461438179,
+      "peak_fraction": 0.6370964877942874
+    },
+    "elastic": {
+      "squash": 10.446488857269287,
+      "rebound_height": 40.70316627621651,
+      "peak_fraction": 0.49855591594765386
+    },
+    "ms_per_frame": 13.308016800010591,
+    "ms_per_substep": 1.663502100001324
+  },
+  "unified|8x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 5,
+    "PRDM": {
+      "squash": 13.338565826416016,
+      "rebound_height": 34.73668172955513,
+      "peak_fraction": 0.8697407028859808
+    },
+    "elastic": {
+      "squash": 12.404143810272217,
+      "rebound_height": 43.90530660748482,
+      "peak_fraction": 0.8244208169701217
+    },
+    "ms_per_frame": 22.305526416660843,
+    "ms_per_substep": 2.7881908020826054
+  },
+  "unified|8x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 10,
+    "PRDM": {
+      "squash": 12.644529342651367,
+      "rebound_height": 36.49972751736641,
+      "peak_fraction": 0.940577637175478
+    },
+    "elastic": {
+      "squash": 14.737725257873535,
+      "rebound_height": 42.942870408296585,
+      "peak_fraction": 1.052095367763415
+    },
+    "ms_per_frame": 37.2706309166612,
+    "ms_per_substep": 4.65882886458265
+  },
+  "unified|8x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 20,
+    "PRDM": {
+      "squash": 12.438774108886719,
+      "rebound_height": 37.9779227077961,
+      "peak_fraction": 0.9677485038348435
+    },
+    "elastic": {
+      "squash": 14.60278034210205,
+      "rebound_height": 39.76314142346382,
+      "peak_fraction": 0.930332544325797
+    },
+    "ms_per_frame": 66.84961373333256,
+    "ms_per_substep": 8.35620171666657
+  },
+  "unified|8x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 40,
+    "PRDM": {
+      "squash": 12.397587299346924,
+      "rebound_height": 38.36088255047798,
+      "peak_fraction": 0.9779814826074177
+    },
+    "elastic": {
+      "squash": 14.530181884765625,
+      "rebound_height": 40.456999093294144,
+      "peak_fraction": 0.9465304816738912
+    },
+    "ms_per_frame": 125.50189571666124,
+    "ms_per_substep": 15.687736964582655
+  },
+  "unified|16x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 2,
+    "PRDM": {
+      "squash": 17.44401454925537,
+      "rebound_height": 25.80099180340767,
+      "peak_fraction": 0.596780941214984
+    },
+    "elastic": {
+      "squash": 10.58286428451538,
+      "rebound_height": 42.90621355175972,
+      "peak_fraction": 0.5037189278946819
+    },
+    "ms_per_frame": 26.724473049989683,
+    "ms_per_substep": 1.6702795656243552
+  },
+  "unified|16x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 5,
+    "PRDM": {
+      "squash": 13.811647891998291,
+      "rebound_height": 37.12301328778267,
+      "peak_fraction": 0.8419348683015074
+    },
+    "elastic": {
+      "squash": 12.8096342086792,
+      "rebound_height": 43.92879083752632,
+      "peak_fraction": 0.7925350290406792
+    },
+    "ms_per_frame": 44.26985763332899,
+    "ms_per_substep": 2.766866102083062
+  },
+  "unified|16x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 10,
+    "PRDM": {
+      "squash": 13.036131858825684,
+      "rebound_height": 37.85567358136177,
+      "peak_fraction": 0.9183674100825434
+    },
+    "elastic": {
+      "squash": 14.30279016494751,
+      "rebound_height": 44.327545911073685,
+      "peak_fraction": 0.9687932123804645
+    },
+    "ms_per_frame": 74.34295085001092,
+    "ms_per_substep": 4.646434428125683
+  },
+  "unified|16x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 20,
+    "PRDM": {
+      "squash": 12.62044906616211,
+      "rebound_height": 38.71004655957222,
+      "peak_fraction": 0.949889024039682
+    },
+    "elastic": {
+      "squash": 14.774322509765625,
+      "rebound_height": 44.12572458386421,
+      "peak_fraction": 0.9994704826891713
+    },
+    "ms_per_frame": 134.18540348332803,
+    "ms_per_substep": 8.386587717708002
+  },
+  "unified|16x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 40,
+    "PRDM": {
+      "squash": 12.418389320373535,
+      "rebound_height": 39.69161584973335,
+      "peak_fraction": 0.9790838739013895
+    },
+    "elastic": {
+      "squash": 14.756500720977783,
+      "rebound_height": 43.67070272564888,
+      "peak_fraction": 0.964325662124048
+    },
+    "ms_per_frame": 251.72830113333475,
+    "ms_per_substep": 15.733018820833422
+  },
+  "split|2x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 2,
+    "iterations": 2,
+    "PRDM": {
+      "squash": 16.079485416412354,
+      "rebound_height": 21.048475056886673,
+      "peak_fraction": 0.6416798269228601
+    },
+    "elastic": {
+      "squash": 1.9177794456481934,
+      "rebound_height": 19.33513954281807,
+      "peak_fraction": 0.04127394149194534
+    },
+    "ms_per_frame": 3.3458096333409535,
+    "ms_per_substep": 1.6729048166704767
+  },
+  "split|2x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 2,
+    "iterations": 5,
+    "PRDM": {
+      "squash": 13.01264762878418,
+      "rebound_height": 25.213468819856644,
+      "peak_fraction": 0.8210770271328875
+    },
+    "elastic": {
+      "squash": 3.151059150695801,
+      "rebound_height": 31.531382352113724,
+      "peak_fraction": 0.19967979630050875
+    },
+    "ms_per_frame": 5.60063818332613,
+    "ms_per_substep": 2.800319091663065
+  },
+  "split|2x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 2,
+    "iterations": 10,
+    "PRDM": {
+      "squash": 12.789130210876465,
+      "rebound_height": 25.26472881436348,
+      "peak_fraction": 0.8365770580074804
+    },
+    "elastic": {
+      "squash": 12.313783168792725,
+      "rebound_height": 58.8444359600544,
+      "peak_fraction": 0.8894668213873648
+    },
+    "ms_per_frame": 9.408451816671004,
+    "ms_per_substep": 4.704225908335502
+  },
+  "split|2x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 2,
+    "iterations": 20,
+    "PRDM": {
+      "squash": 12.786388397216797,
+      "rebound_height": 25.326181203126907,
+      "peak_fraction": 0.8339763384610719
+    },
+    "elastic": {
+      "squash": 13.579010963439941,
+      "rebound_height": 20.13878896832466,
+      "peak_fraction": 0.7766567797694419
+    },
+    "ms_per_frame": 17.069728033326708,
+    "ms_per_substep": 8.534864016663354
+  },
+  "split|2x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 2,
+    "iterations": 40,
+    "PRDM": {
+      "squash": 12.746989727020264,
+      "rebound_height": 25.625336915254593,
+      "peak_fraction": 0.8397777438134275
+    },
+    "elastic": {
+      "squash": 13.661026954650879,
+      "rebound_height": 20.52753046154976,
+      "peak_fraction": 0.7657349857924292
+    },
+    "ms_per_frame": 31.970889716664413,
+    "ms_per_substep": 15.985444858332206
+  },
+  "split|4x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 2,
+    "PRDM": {
+      "squash": 17.665743827819824,
+      "rebound_height": 12.951422482728958,
+      "peak_fraction": 0.5248013141802975
+    },
+    "elastic": {
+      "squash": 2.9382705688476562,
+      "rebound_height": 41.31059721112251,
+      "peak_fraction": 0.10532636842905913
+    },
+    "ms_per_frame": 6.844981900000373,
+    "ms_per_substep": 1.7112454750000932
+  },
+  "split|4x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 5,
+    "PRDM": {
+      "squash": 12.429237365722656,
+      "rebound_height": 21.575022488832474,
+      "peak_fraction": 0.8246695743175586
+    },
+    "elastic": {
+      "squash": 6.8708062171936035,
+      "rebound_height": 79.68001067638397,
+      "peak_fraction": 0.6884872329532954
+    },
+    "ms_per_frame": 11.370414650006447,
+    "ms_per_substep": 2.842603662501612
+  },
+  "split|4x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 10,
+    "PRDM": {
+      "squash": 11.912524700164795,
+      "rebound_height": 31.637120991945267,
+      "peak_fraction": 0.9002658496571956
+    },
+    "elastic": {
+      "squash": 21.111667156219482,
+      "rebound_height": 223.858579993248,
+      "peak_fraction": 3.543425392329948
+    },
+    "ms_per_frame": 19.263207283332424,
+    "ms_per_substep": 4.815801820833106
+  },
+  "split|4x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 20,
+    "PRDM": {
+      "squash": 11.866986751556396,
+      "rebound_height": 31.83167055249214,
+      "peak_fraction": 0.9050460591097246
+    },
+    "elastic": {
+      "squash": 13.445913791656494,
+      "rebound_height": 29.76076677441597,
+      "peak_fraction": 0.7641934779093547
+    },
+    "ms_per_frame": 33.519339799992544,
+    "ms_per_substep": 8.379834949998136
+  },
+  "split|4x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 40,
+    "PRDM": {
+      "squash": 11.875629425048828,
+      "rebound_height": 31.907547265291214,
+      "peak_fraction": 0.9063606821567558
+    },
+    "elastic": {
+      "squash": 14.188647270202637,
+      "rebound_height": 31.67032077908516,
+      "peak_fraction": 0.85699472111925
+    },
+    "ms_per_frame": 63.412035233326,
+    "ms_per_substep": 15.8530088083315
+  },
+  "split|8x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 2,
+    "PRDM": {
+      "squash": 16.614854335784912,
+      "rebound_height": 28.64997461438179,
+      "peak_fraction": 0.6370964877942874
+    },
+    "elastic": {
+      "squash": 6.535649299621582,
+      "rebound_height": 68.36120784282684,
+      "peak_fraction": 0.3470733315067898
+    },
+    "ms_per_frame": 13.171410233326242,
+    "ms_per_substep": 1.6464262791657802
+  },
+  "split|8x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 5,
+    "PRDM": {
+      "squash": 13.338565826416016,
+      "rebound_height": 34.73668172955513,
+      "peak_fraction": 0.8697407028859808
+    },
+    "elastic": {
+      "squash": 11.025547981262207,
+      "rebound_height": 47.36136272549629,
+      "peak_fraction": 1.0113896650733603
+    },
+    "ms_per_frame": 23.295452616654682,
+    "ms_per_substep": 2.9119315770818353
+  },
+  "split|8x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 10,
+    "PRDM": {
+      "squash": 12.644529342651367,
+      "rebound_height": 36.49972751736641,
+      "peak_fraction": 0.940577637175478
+    },
+    "elastic": {
+      "squash": 17.182230949401855,
+      "rebound_height": -2.217363566160202,
+      "peak_fraction": 1.8984450404856903
+    },
+    "ms_per_frame": 37.6377430333226,
+    "ms_per_substep": 4.704717879165325
+  },
+  "split|8x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 20,
+    "PRDM": {
+      "squash": 12.438774108886719,
+      "rebound_height": 37.9779227077961,
+      "peak_fraction": 0.9677485038348435
+    },
+    "elastic": {
+      "squash": 14.708638191223145,
+      "rebound_height": 37.34247758984566,
+      "peak_fraction": 0.8782935833622346
+    },
+    "ms_per_frame": 67.17749853332862,
+    "ms_per_substep": 8.397187316666077
+  },
+  "split|8x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 40,
+    "PRDM": {
+      "squash": 12.397587299346924,
+      "rebound_height": 38.36088255047798,
+      "peak_fraction": 0.9779814826074177
+    },
+    "elastic": {
+      "squash": 14.62852954864502,
+      "rebound_height": 39.11619260907173,
+      "peak_fraction": 0.9284847644673148
+    },
+    "ms_per_frame": 126.45817178334558,
+    "ms_per_substep": 15.807271472918197
+  },
+  "split|16x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 2,
+    "PRDM": {
+      "squash": 17.44401454925537,
+      "rebound_height": 25.80099180340767,
+      "peak_fraction": 0.596780941214984
+    },
+    "elastic": {
+      "squash": 8.374392986297607,
+      "rebound_height": 44.576872140169144,
+      "peak_fraction": 0.4345629733043917
+    },
+    "ms_per_frame": 26.59946823332575,
+    "ms_per_substep": 1.6624667645828595
+  },
+  "split|16x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 5,
+    "PRDM": {
+      "squash": 13.811647891998291,
+      "rebound_height": 37.12301328778267,
+      "peak_fraction": 0.8419348683015074
+    },
+    "elastic": {
+      "squash": 11.825859546661377,
+      "rebound_height": 47.05177620053291,
+      "peak_fraction": 0.793268118529178
+    },
+    "ms_per_frame": 44.29616691666828,
+    "ms_per_substep": 2.7685104322917673
+  },
+  "split|16x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 10,
+    "PRDM": {
+      "squash": 13.036131858825684,
+      "rebound_height": 37.85567358136177,
+      "peak_fraction": 0.9183674100825434
+    },
+    "elastic": {
+      "squash": 14.392495155334473,
+      "rebound_height": 46.35130241513252,
+      "peak_fraction": 1.054794091062628
+    },
+    "ms_per_frame": 74.14705133332973,
+    "ms_per_substep": 4.634190708333108
+  },
+  "split|16x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 20,
+    "PRDM": {
+      "squash": 12.62044906616211,
+      "rebound_height": 38.71004655957222,
+      "peak_fraction": 0.949889024039682
+    },
+    "elastic": {
+      "squash": 14.997601509094238,
+      "rebound_height": 43.83813217282295,
+      "peak_fraction": 1.0100820739927354
+    },
+    "ms_per_frame": 133.80556359999596,
+    "ms_per_substep": 8.362847724999748
+  },
+  "split|16x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 40,
+    "PRDM": {
+      "squash": 12.418389320373535,
+      "rebound_height": 39.69161584973335,
+      "peak_fraction": 0.9790838739013895
+    },
+    "elastic": {
+      "squash": 14.800071716308594,
+      "rebound_height": 43.46834495663643,
+      "peak_fraction": 0.9702376489470571
+    },
+    "ms_per_frame": 254.4974313833336,
+    "ms_per_substep": 15.90608946145835
+  }
+}

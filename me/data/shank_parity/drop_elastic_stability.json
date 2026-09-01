@@ -1,0 +1,542 @@
+{
+  "unified|4x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 2,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867166519165039,
+    "max_departure": -1.531839370727539e-05,
+    "stable": true
+  },
+  "unified|4x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 5,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867166519165039,
+    "max_departure": -1.531839370727539e-05,
+    "stable": true
+  },
+  "unified|4x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 10,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867166519165039,
+    "max_departure": -1.531839370727539e-05,
+    "stable": true
+  },
+  "unified|4x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 20,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867166519165039,
+    "max_departure": -1.531839370727539e-05,
+    "stable": true
+  },
+  "unified|4x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 40,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867166519165039,
+    "max_departure": -1.531839370727539e-05,
+    "stable": true
+  },
+  "unified|8x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 2,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867281556129456,
+    "max_departure": -3.814697265625e-06,
+    "stable": true
+  },
+  "unified|8x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 5,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867281556129456,
+    "max_departure": -3.814697265625e-06,
+    "stable": true
+  },
+  "unified|8x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 10,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867281556129456,
+    "max_departure": -3.814697265625e-06,
+    "stable": true
+  },
+  "unified|8x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 20,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867281556129456,
+    "max_departure": -3.814697265625e-06,
+    "stable": true
+  },
+  "unified|8x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 40,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867281556129456,
+    "max_departure": -3.814697265625e-06,
+    "stable": true
+  },
+  "unified|12x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 12,
+    "iterations": 2,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867302417755127,
+    "max_departure": -1.7285346984863281e-06,
+    "stable": true
+  },
+  "unified|12x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 12,
+    "iterations": 5,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867302417755127,
+    "max_departure": -1.7285346984863281e-06,
+    "stable": true
+  },
+  "unified|12x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 12,
+    "iterations": 10,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867302417755127,
+    "max_departure": -1.7285346984863281e-06,
+    "stable": true
+  },
+  "unified|12x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 12,
+    "iterations": 20,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867302417755127,
+    "max_departure": -1.7285346984863281e-06,
+    "stable": true
+  },
+  "unified|12x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 12,
+    "iterations": 40,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867302417755127,
+    "max_departure": -1.7285346984863281e-06,
+    "stable": true
+  },
+  "unified|16x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 2,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867310166358948,
+    "max_departure": -9.5367431640625e-07,
+    "stable": true
+  },
+  "unified|16x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 5,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867310166358948,
+    "max_departure": -9.5367431640625e-07,
+    "stable": true
+  },
+  "unified|16x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 10,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867310166358948,
+    "max_departure": -9.5367431640625e-07,
+    "stable": true
+  },
+  "unified|16x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 20,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867310166358948,
+    "max_departure": -9.5367431640625e-07,
+    "stable": true
+  },
+  "unified|16x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 40,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867310166358948,
+    "max_departure": -9.5367431640625e-07,
+    "stable": true
+  },
+  "unified|24x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 24,
+    "iterations": 2,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867315530776978,
+    "max_departure": -4.172325134277344e-07,
+    "stable": true
+  },
+  "unified|24x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 24,
+    "iterations": 5,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867315530776978,
+    "max_departure": -4.172325134277344e-07,
+    "stable": true
+  },
+  "unified|24x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 24,
+    "iterations": 10,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867315530776978,
+    "max_departure": -4.172325134277344e-07,
+    "stable": true
+  },
+  "unified|24x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 24,
+    "iterations": 20,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867315530776978,
+    "max_departure": -4.172325134277344e-07,
+    "stable": true
+  },
+  "unified|24x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 24,
+    "iterations": 40,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867315530776978,
+    "max_departure": -4.172325134277344e-07,
+    "stable": true
+  },
+  "unified|32x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 32,
+    "iterations": 2,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867317318916321,
+    "max_departure": -2.384185791015625e-07,
+    "stable": true
+  },
+  "unified|32x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 32,
+    "iterations": 5,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867317318916321,
+    "max_departure": -2.384185791015625e-07,
+    "stable": true
+  },
+  "unified|32x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 32,
+    "iterations": 10,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867317318916321,
+    "max_departure": -2.384185791015625e-07,
+    "stable": true
+  },
+  "unified|32x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 32,
+    "iterations": 20,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867317318916321,
+    "max_departure": -2.384185791015625e-07,
+    "stable": true
+  },
+  "unified|32x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 32,
+    "iterations": 40,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867317318916321,
+    "max_departure": -2.384185791015625e-07,
+    "stable": true
+  },
+  "split|4x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 2,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867166519165039,
+    "max_departure": -1.531839370727539e-05,
+    "stable": true
+  },
+  "split|4x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 5,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5976297855377197,
+    "max_departure": 0.010897815227508545,
+    "stable": false
+  },
+  "split|4x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 10,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.6495847702026367,
+    "max_departure": 0.06285279989242554,
+    "stable": false
+  },
+  "split|4x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 20,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867166519165039,
+    "max_departure": -1.531839370727539e-05,
+    "stable": true
+  },
+  "split|4x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 4,
+    "iterations": 40,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867166519165039,
+    "max_departure": -1.531839370727539e-05,
+    "stable": true
+  },
+  "split|8x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 2,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5920798182487488,
+    "max_departure": 0.005347847938537598,
+    "stable": false
+  },
+  "split|8x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 5,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5980281829833984,
+    "max_departure": 0.011296212673187256,
+    "stable": false
+  },
+  "split|8x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 10,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5983194708824158,
+    "max_departure": 0.01158750057220459,
+    "stable": false
+  },
+  "split|8x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 20,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867281556129456,
+    "max_departure": -3.814697265625e-06,
+    "stable": true
+  },
+  "split|8x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 8,
+    "iterations": 40,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867281556129456,
+    "max_departure": -3.814697265625e-06,
+    "stable": true
+  },
+  "split|12x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 12,
+    "iterations": 2,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867302417755127,
+    "max_departure": -1.7285346984863281e-06,
+    "stable": true
+  },
+  "split|12x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 12,
+    "iterations": 5,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5876187682151794,
+    "max_departure": 0.0008867979049682617,
+    "stable": true
+  },
+  "split|12x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 12,
+    "iterations": 10,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867302417755127,
+    "max_departure": -1.7285346984863281e-06,
+    "stable": true
+  },
+  "split|12x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 12,
+    "iterations": 20,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867302417755127,
+    "max_departure": -1.7285346984863281e-06,
+    "stable": true
+  },
+  "split|12x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 12,
+    "iterations": 40,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867302417755127,
+    "max_departure": -1.7285346984863281e-06,
+    "stable": true
+  },
+  "split|16x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 2,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867310166358948,
+    "max_departure": -9.5367431640625e-07,
+    "stable": true
+  },
+  "split|16x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 5,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867310166358948,
+    "max_departure": -9.5367431640625e-07,
+    "stable": true
+  },
+  "split|16x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 10,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867310166358948,
+    "max_departure": -9.5367431640625e-07,
+    "stable": true
+  },
+  "split|16x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 20,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867310166358948,
+    "max_departure": -9.5367431640625e-07,
+    "stable": true
+  },
+  "split|16x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 16,
+    "iterations": 40,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867310166358948,
+    "max_departure": -9.5367431640625e-07,
+    "stable": true
+  },
+  "split|24x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 24,
+    "iterations": 2,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867315530776978,
+    "max_departure": -4.172325134277344e-07,
+    "stable": true
+  },
+  "split|24x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 24,
+    "iterations": 5,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867315530776978,
+    "max_departure": -4.172325134277344e-07,
+    "stable": true
+  },
+  "split|24x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 24,
+    "iterations": 10,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867315530776978,
+    "max_departure": -4.172325134277344e-07,
+    "stable": true
+  },
+  "split|24x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 24,
+    "iterations": 20,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867315530776978,
+    "max_departure": -4.172325134277344e-07,
+    "stable": true
+  },
+  "split|24x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 24,
+    "iterations": 40,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867315530776978,
+    "max_departure": -4.172325134277344e-07,
+    "stable": true
+  },
+  "split|32x2": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 32,
+    "iterations": 2,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867317318916321,
+    "max_departure": -2.384185791015625e-07,
+    "stable": true
+  },
+  "split|32x5": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 32,
+    "iterations": 5,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867317318916321,
+    "max_departure": -2.384185791015625e-07,
+    "stable": true
+  },
+  "split|32x10": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 32,
+    "iterations": 10,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867317318916321,
+    "max_departure": -2.384185791015625e-07,
+    "stable": true
+  },
+  "split|32x20": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 32,
+    "iterations": 20,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867317318916321,
+    "max_departure": -2.384185791015625e-07,
+    "stable": true
+  },
+  "split|32x40": {
+    "device": "NVIDIA GeForce RTX 5090",
+    "substeps": 32,
+    "iterations": 40,
+    "rest_z": 0.5867319703102112,
+    "peak_abs_z": 0.5867317318916321,
+    "max_departure": -2.384185791015625e-07,
+    "stable": true
+  }
+}

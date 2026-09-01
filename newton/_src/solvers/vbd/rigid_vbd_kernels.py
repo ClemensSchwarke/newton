@@ -2109,6 +2109,14 @@ def step_joint_C0_lambda(
     joint_is_hard: wp.array[wp.int32],
     joint_parent_elastic_endpoint: wp.array[wp.int32],
     joint_child_elastic_endpoint: wp.array[wp.int32],
+    body_elastic_index: wp.array[wp.int32],
+    elastic_joint: wp.array[wp.int32],
+    elastic_mode_count: wp.array[wp.int32],
+    joint_q_prev: wp.array[float],
+    joint_q_start: wp.array[int],
+    elastic_endpoint_phi: wp.array[wp.vec3],
+    elastic_endpoint_psi: wp.array[wp.vec3],
+    elastic_max_mode_count: int,
     lambda_decay: float,
     penalty_decay: float,
     joint_penalty_k_min: wp.array[float],
@@ -2122,6 +2130,14 @@ def step_joint_C0_lambda(
     """Per-step joint AVBD maintenance: k decay + C0 snapshot + lambda decay.
 
     Sole owner of all joint decay. Runs every step.
+
+    Joints touching a reduced elastic endpoint take the snapshot at the
+    previous-step *deformed* attachment, evaluated from ``joint_q_prev``, so
+    that C0 is the same quantity as the constraint the iterations drive to
+    zero. Skipping the snapshot for these joints while leaving the dual update
+    running is alpha = 0 in the stabilized constraint of Augmented Vertex Block
+    Descent, which turns the multiplier update from a leaky difference into an
+    integrator.
     """
     j = wp.tid()
     c_start = int(joint_constraint_start[j])
@@ -2142,13 +2158,6 @@ def step_joint_C0_lambda(
         joint_lambda_ang[j] = wp.vec3(0.0)
         return
 
-    if joint_parent_elastic_endpoint[j] >= 0 or joint_child_elastic_endpoint[j] >= 0:
-        joint_C0_lin[j] = wp.vec3(0.0)
-        joint_C0_ang[j] = wp.vec3(0.0)
-        joint_lambda_lin[j] = joint_lambda_lin[j] * lambda_decay
-        joint_lambda_ang[j] = joint_lambda_ang[j] * lambda_decay
-        return
-
     lin_hard = joint_is_hard[c_start]
     ang_hard = 0
     if c_dim > 1:
@@ -2156,11 +2165,43 @@ def step_joint_C0_lambda(
 
     if lin_hard == 1 or ang_hard == 1:
         parent = joint_parent[j]
+        X_pj_prev = eval_elastic_endpoint_xform(
+            j,
+            parent,
+            True,
+            joint_X_p[j],
+            body_elastic_index,
+            elastic_joint,
+            elastic_mode_count,
+            joint_q_prev,
+            joint_q_start,
+            joint_parent_elastic_endpoint,
+            joint_child_elastic_endpoint,
+            elastic_endpoint_phi,
+            elastic_endpoint_psi,
+            elastic_max_mode_count,
+        )
+        X_cj_prev = eval_elastic_endpoint_xform(
+            j,
+            child,
+            False,
+            joint_X_c[j],
+            body_elastic_index,
+            elastic_joint,
+            elastic_mode_count,
+            joint_q_prev,
+            joint_q_start,
+            joint_parent_elastic_endpoint,
+            joint_child_elastic_endpoint,
+            elastic_endpoint_phi,
+            elastic_endpoint_psi,
+            elastic_max_mode_count,
+        )
         if parent >= 0:
-            X_wp = body_q_prev[parent] * joint_X_p[j]
+            X_wp = body_q_prev[parent] * X_pj_prev
         else:
-            X_wp = joint_X_p[j]
-        X_wc = body_q_prev[child] * joint_X_c[j]
+            X_wp = X_pj_prev
+        X_wc = body_q_prev[child] * X_cj_prev
 
         if lin_hard == 1:
             x_p = wp.transform_get_translation(X_wp)

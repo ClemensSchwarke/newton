@@ -26,7 +26,7 @@ import warp as wp
 import newton.viewer
 from newton.examples.robot import example_robot_compliant_shank_drop as ex
 
-OUT_JSON = "me/data/shank_parity/drop_elastic_solve.json"
+OUT_JSON = "me/data/shank_parity/drop_elastic_solve_c0.json"
 
 SUBSTEP_AXIS = (2, 4, 8, 16)
 ITERATION_AXIS = (2, 5, 10, 20, 40)

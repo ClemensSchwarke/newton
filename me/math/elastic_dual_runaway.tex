@@ -1,0 +1,293 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage{amsmath,amssymb,bm}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{parskip}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{listings}
+
+\setlength{\parindent}{0pt}
+\lstset{basicstyle=\ttfamily\small, frame=single, aboveskip=4pt, belowskip=4pt}
+
+\title{\vspace{-1.2cm}\textbf{AVBD's Explosive-Error-Correction Guard Is Disabled\\ for Joints Touching an Elastic Endpoint}
+\\[0.3em]\large\normalfont Why a clamped reduced elastic body diverges at small steps and few iterations}
+\author{\normalsize Newton Physics Engine}
+\date{\normalsize August 2026}
+
+\begin{document}
+\maketitle
+\vspace{-0.6cm}
+
+\section{The observation}
+
+A reduced elastic blade clamped to a heavier carriage diverges in free fall, with no contact,
+when the substep count is high and the iteration count low. The stable region is bounded from
+\emph{below} in iterations, and the bound rises with the substep count:
+
+\begin{center}\small
+\begin{tabular}{@{}rccccc@{}}
+\toprule
+substeps & 2 iter & 5 iter & 10 iter & 20 iter & 40 iter \\
+\midrule
+4  & ok  & ok  & ok  & ok  & ok \\
+8  & div & ok  & ok  & ok  & ok \\
+12 & div & div & ok  & ok  & ok \\
+16 & div & div & ok  & div & ok \\
+24 & div & div & div & ok  & ok \\
+32 & div & div & div & div & div \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Refining the step normally reduces the iterations needed, which is the argument of Macklin et
+al., \emph{Small Steps in Physics Simulation} (2019). Here it raises them.
+
+\section{The defect}
+
+AVBD regularises the constraint function itself. Giles, Diaz and Yuksel,
+\emph{Augmented Vertex Block Descent}, SIGGRAPH 2025, Section 3.6, define
+\begin{equation}
+  C_j(x) = C^*_j(x) - \alpha\,C^*_j(x^t),
+  \qquad \alpha = 0.95 ,
+  \label{eq:reg}
+\end{equation}
+with $C^*_j$ the raw constraint and $x^t$ the configuration at the start of the timestep. The
+parameter $\alpha$ sets what portion of the pre-existing constraint error is ignored. The
+section is titled \emph{Preventing Explosive Error Correction}, and its motivation is stated
+directly:
+
+\begin{quote}\itshape
+if a hard constraint is violated in the previous frame (due to limited iterations), in the very
+next frame the hard constraint can apply an arbitrarily large force to enforce the constraint,
+resulting in a sudden motion and a large spike in momentum.
+\end{quote}
+
+The regularised $C_j$ enters the energy, the force and the dual update alike. With the dual
+update of the paper's Equation 11, $\lambda^{(n+1)} = k^{(n)} C_j(x) + \lambda^{(n)}$, the
+implementation is (\texttt{rigid\_vbd\_kernels.py:353})
+\begin{equation}
+  \bm{\lambda}_{n+1} = \bm{\lambda}_n + k\,\big(\mathbf{C}_n - \alpha\,\mathbf{C}_0\big),
+  \qquad
+  \mathbf{f} = k\,\mathbf{C} + \bm{\lambda},
+  \label{eq:dual}
+\end{equation}
+where $\mathbf{C}_0$ is the snapshot of $C^*_j(x^t)$. This is \eqref{eq:reg}, with the paper's
+value of $\alpha$.
+
+The snapshot kernel skips exactly the joints of interest
+(\texttt{step\_joint\_C0\_lambda:2145}):
+
+\begin{lstlisting}
+if joint_parent_elastic_endpoint[j] >= 0 or joint_child_elastic_endpoint[j] >= 0:
+    joint_C0_lin[j] = wp.vec3(0.0)
+    joint_C0_ang[j] = wp.vec3(0.0)
+    joint_lambda_lin[j] = joint_lambda_lin[j] * lambda_decay
+    joint_lambda_ang[j] = joint_lambda_ang[j] * lambda_decay
+    return
+\end{lstlisting}
+
+Any joint touching an elastic endpoint gets $\mathbf{C}_0 = \mathbf{0}$ and returns before the
+snapshot below. Setting $\mathbf{C}_0 = \mathbf{0}$ is setting $\alpha = 0$ in \eqref{eq:reg}:
+no pre-existing error is ignored, and the joint is placed in exactly the configuration
+Section~3.6 of the paper exists to prevent. The dual is left active and unregularised,
+$\bm{\lambda} \mathrel{+}= k\,\mathbf{C}$, integrating the full standing violation every
+iteration.
+
+One part of the paper's scheme does survive the branch: $\bm{\lambda}$ is still scaled down
+between steps by $\alpha\gamma$, the warm-start factor of the paper's Equation 19, visible as
+\texttt{lambda\_decay} in the listing and computed as
+\texttt{rigid\_joint\_alpha * rigid\_avbd\_gamma} in the solver. That decay is then the only
+thing left bounding the multiplier. Section~\ref{sec:alpha0} shows it is enough when the driving
+term is the small residue that \eqref{eq:reg} leaves behind, and not enough once
+\eqref{eq:reg} is removed and the multiplier is driven by the full violation.
+
+Measured over 256 substeps on the clamp joint, comparing the elastic model against a rigid pair
+of the same masses and topology. The rigid pair is driven by a $500$ N force on the light body
+oscillating at $8$ Hz, so that its clamp carries a time-varying load and its multiplier is
+genuinely engaged; without such a drive the violation is static, the snapshot cancels it exactly
+and $\bm{\lambda}$ never leaves zero, which makes the comparison vacuous.
+
+\begin{center}\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+ & rms $\lvert\mathbf{C}\rvert$ & rms $\lvert\mathbf{C}_0\rvert$ & rms $\lvert\mathbf{C}-\alpha\mathbf{C}_0\rvert$ \\
+\midrule
+elastic clamp & $7.82\times10^{-8}$ & $0$ exactly      & $7.82\times10^{-8}$ \\
+rigid clamp   & $1.733\times10^{-4}$ & $1.724\times10^{-4}$ & $9.49\times10^{-6}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+For the rigid clamp the snapshot tracks the violation and the stabilisation removes $95\%$ of
+it. For the elastic clamp nothing is removed.
+
+\subsection{Why textbook ALM does not need this}
+
+The augmented Lagrangian method carries no such term and converges unconditionally, so the
+regularisation can look like an unnecessary graft. The guarantee, however, is for a single
+static problem whose primal is minimised before each dual update. AVBD runs the method inside a
+timestepping loop, with a handful of iterations per step and $\lambda$ warm-started across
+steps. Sections 3.6 and 3.7 of the paper exist because that regime injects energy: pre-existing
+error drives an arbitrarily large correction, and warm-starting carries it forward. The
+$\alpha$ regularisation is not a departure from ALM but the correction that makes ALM usable
+here, and the paper says as much.
+
+\section{The rigid control}
+
+Forcing $\mathbf{C}_0 = \mathbf{0}$ on the rigid pair, changing nothing else, reproduces the
+failure --- with no elastic body, no modal coordinate and no floating frame anywhere in the
+model:
+
+\begin{center}\small
+\begin{tabular}{@{}rrrll@{}}
+\toprule
+substeps & iterations & $k$ & normal $\mathbf{C}_0$ & $\mathbf{C}_0$ zeroed \\
+\midrule
+24 & 2  & $10^{6}$ & ok, $\lvert\bm{\lambda}\rvert \to 538$ & diverged \\
+24 & 20 & $10^{6}$ & ok, $\lvert\bm{\lambda}\rvert \to 500$ & diverged \\
+24 & 2  & $10^{7}$ & ok, $\lvert\bm{\lambda}\rvert \to 520$ & diverged \\
+4  & 2  & $10^{6}$ & ok, $\lvert\bm{\lambda}\rvert \to 704$ & diverged \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Zeroing the snapshot is sufficient on its own. In this pure form the failure is also
+unconditional: neither more iterations, nor a stiffer penalty, nor a coarser step recovers it.
+
+\section{What $\alpha = 0$ does to the multiplier}
+\label{sec:alpha0}
+
+Every term of \eqref{eq:dual} was recorded per iteration on the rigid pair. With $N$ iterations
+per step and the decay measured at $d = 0.949$, one step is
+\begin{equation}
+  \lambda_{n+1} = d\Big(\lambda_n + k\sum_{i=1}^{N} C_i\Big),
+  \label{eq:step}
+\end{equation}
+and \eqref{eq:dual} reproduces the recorded multiplier to a relative residual of $10^{-7}$.
+
+\subsection{Proportional against integral feedback}
+
+The snapshot is the violation left at the end of the previous step: measured over $179$ steps,
+$\mathbf{C}_0$ of step $n$ equals $C$ at the end of step $n-1$ to a median relative difference of
+$2\times10^{-5}$. Writing $C_n$ for that violation and taking one update per step for clarity,
+\eqref{eq:dual} reads
+\begin{equation}
+  \lambda_{n+1} = \lambda_n + k\,\big(C_n - \alpha\,C_{n-1}\big).
+  \label{eq:diff}
+\end{equation}
+
+At $\alpha \to 1$ the right-hand side is a difference and the sum telescopes to
+$\lambda_{n+1} = \lambda_0 + k\,C_n - k\,C_{-1}$: the multiplier \emph{tracks} the violation,
+bounded by $kC$ however long the simulation runs. At $\alpha = 0$ the sum no longer telescopes,
+\begin{equation}
+  \lambda_{n+1} = \lambda_n + k\,C_n = \lambda_0 + k\sum_{i=0}^{n} C_i ,
+\end{equation}
+and the multiplier \emph{integrates} the violation instead. Proportional feedback becomes
+integral feedback.
+
+This is the paper's explosive error correction seen from the other side: a multiplier that
+integrates the standing violation is one that keeps adding force to correct an error the step
+began with. It also predicts the form of the failure. An integrator contributes ninety degrees
+of phase lag, so the loop should fail by growing oscillation rather than by monotone growth.
+Section~\ref{sec:mode} shows that it does.
+
+At the value actually used, $\alpha = 0.95$, \eqref{eq:diff} is a leaky difference: $95\%$
+telescopes and a $5\%$ residue accumulates against the decay. That residue sets a finite fixed
+point. With $C_n \approx C_{n-1} \equiv C$, each update contributes $k(1-\alpha)C$, so
+\begin{equation}
+  \lambda_{n+1} = d\big(\lambda_n + N k (1-\alpha) C\big),
+  \qquad
+  \lambda^\star = \frac{d\,N\,k\,(1-\alpha)\,C}{1-d} .
+  \label{eq:fixed}
+\end{equation}
+With $d = 0.949$, $N = 2$, $k = 10^{6}$, $\alpha = 0.95$ and the measured
+$C = 2.36\times10^{-4}$, this gives $22.4/0.051 \approx 439$ against a recorded $\lambda$
+oscillating between $466$ and $491$: within seven percent. The quasi-static assumption behind
+\eqref{eq:fixed} holds only in the stable regime; once the mode below is growing, $C$ oscillates
+at nine steps per period and $C_n \not\approx C_{n-1}$.
+
+\subsection{The mode this produces}
+\label{sec:mode}
+
+Everything measured here is a property of the $\lambda$ time series.
+
+$\lambda$ fails by oscillation rather than by growth. Under the sustained drive it runs
+$+428 \to -75651 \to +1.5\times10^{7}$, changing sign, which no scalar real recurrence can
+produce.
+
+Removing the drive isolates the mode. Applying a single six-step impulse and then holding the
+force at zero for the rest of the run, the free evolution of $\lambda$ is:
+
+\begin{center}\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+ & sign changes & period & frequency & AR(2) residual \\
+\midrule
+$\alpha = 0.95$ & 27 & $66.5$ steps & $72.2$ Hz & $1.1\times10^{-1}$ \\
+$\alpha = 0$    & 54 & $8.6$ steps  & $558.8$ Hz & $8.0\times10^{-7}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Both cases ring, but there is no forcing left to ring at: the frequency is a property of the
+coupled multiplier--body system, and it differs by a factor of eight between the two. Only the
+unregularised case grows, reaching $9.2\times10^{13}$ in $253$ steps from that single kick. An
+AR(2) fitted to $\lambda$ reproduces its whole response to $8\times10^{-7}$, confirming a
+second-order state, with the complex pair at
+\begin{equation}
+  \lvert\mu\rvert = 1.1100 , \qquad f = 558.8\text{ Hz} .
+\end{equation}
+Raising the model order leaves the dominant root unchanged. No second-order model fits the
+regularised case, whose roots are a real $0.99$ and a pair at $0.856$, all inside the unit
+circle --- consistent with a multiplier slaved to the violation rather than free to ring.
+
+\subsection{The regularisation is causal}
+
+The two estimates above are fits to one time series, so they establish the mode, not its cause.
+Scaling only the clamp's snapshot, $\mathbf{C}_0 \mapsto \beta\,\mathbf{C}_0$, varies the
+effective $\alpha$ continuously while leaving the decay untouched:
+
+\begin{center}\small
+\begin{tabular}{@{}rrrrl@{}}
+\toprule
+$\beta$ & effective $\alpha$ & $\lvert\mu\rvert$ & frequency & AR(2) residual \\
+\midrule
+$1.0$ & $0.950$ & $0.8969$ & $177$ Hz & $1.1\times10^{-1}$ \\
+$0.7$ & $0.665$ & $0.9841$ & $438$ Hz & $6.6\times10^{-3}$ \\
+$0.5$ & $0.475$ & $1.0323$ & $476$ Hz & $6.1\times10^{-8}$ \\
+$0.0$ & $0.000$ & $1.1100$ & $559$ Hz & $5.8\times10^{-8}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The modulus rises monotonically as the regularisation is weakened, crosses unity near
+$\beta \approx 0.6$, and terminates at the value measured with the snapshot zeroed.
+
+Sweeping $\alpha$ itself instead would report stability throughout and isolate nothing:
+\texttt{solver\_vbd.py:2624} sets
+\texttt{joint\_lambda\_decay = rigid\_joint\_alpha * rigid\_avbd\_gamma}, the paper's Equation
+19, so lowering $\alpha$ also drives the warm-start factor toward zero, wiping $\lambda$ at the
+start of every step and preventing the multiplier accumulating at all.
+
+\subsection{Where the boundary falls}
+
+Substeps, iterations, penalty and mass ratio move the boundary without restoring the
+regularisation; they change how large $C$ is and how quickly the primal retires it. Empirically
+the boundary is set by $a = k h^2 / M$, the penalty against the inertial stiffness with $M$ the
+reduced mass across the constraint. At 24 substeps and 2 iterations, varying $k$ gives
+divergence at $a = 0.282$ and stability at $a = 0.326$; varying the mass ratio gives stability at
+$a = 0.289$ and divergence at $a = 0.241$, intersecting at $a_{\text{crit}} \approx 0.28$.
+Refining the step at fixed $k$ drives $a$ down, which is why the iteration requirement rises
+rather than falls.
+
+\section{Reproduction}
+
+Three bodies, no contact: world $\to$ prismatic $\to$ carriage ($12.5$ kg) $\to$ fixed clamp
+$\to$ reduced elastic blade ($0.3$ kg). Released from $5$ m, $0.35$ s, 24 substeps, 2
+iterations.
+
+The rigid control is the same topology with the blade replaced by a rigid body of equal mass,
+driven by an oscillating force so the clamp is loaded, with \texttt{joint\_C0\_lin} and
+\texttt{joint\_C0\_ang} zeroed after each snapshot.
+
+\end{document}

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import math
+import types
 import unittest
 
 import numpy as np
@@ -228,7 +229,7 @@ def _assert_elastic_modal_projection_matches_joint_force(test, device, joint_kin
 
     owner_joint = int(model.elastic_joint.numpy()[0])
     q_start = int(model.joint_q_start.numpy()[owner_joint])
-    q_expected = modal_force_from_joint / h
+    q_expected = (1.0 - solver.rigid_joint_alpha) * modal_force_from_joint / h
     np.testing.assert_allclose(state_1.joint_q.numpy()[q_start + 7], q_expected, rtol=1.0e-5, atol=1.0e-6)
 
 
@@ -2646,6 +2647,13 @@ def test_vbd_revolute_uses_elastic_endpoint(test, device):
 
 
 def test_vbd_revolute_constraint_solves_elastic_mode(test, device):
+    """A revolute constraint must drive the elastic mode until the endpoint reaches the anchor.
+
+    The constraint is born violated, and the stabilized constraint of Augmented Vertex Block
+    Descent only removes ``1 - alpha`` of a standing violation per step, so the multiplier has
+    to accumulate across steps to close it. Asserting satisfaction after a single step would
+    instead pin the behaviour of an unregularized dual.
+    """
     rest_anchor = -0.5
     target_anchor = 0.1
 
@@ -2686,10 +2694,12 @@ def test_vbd_revolute_constraint_solves_elastic_mode(test, device):
         rigid_joint_linear_ke=1.0e6,
         rigid_joint_linear_kd=0.0,
     )
-    solver.step(state_0, state_1, control, None, 0.01)
+    for _ in range(400):
+        solver.step(state_0, state_1, control, None, 0.01)
+        state_0, state_1 = state_1, state_0
 
-    np.testing.assert_allclose(state_1.joint_q.numpy()[q_start + 7], -target_anchor, atol=1.0e-4)
-    after = _deformed_endpoint_world(model, state_1, joint, "child")
+    np.testing.assert_allclose(state_0.joint_q.numpy()[q_start + 7], -target_anchor, atol=1.0e-4)
+    after = _deformed_endpoint_world(model, state_0, joint, "child")
     np.testing.assert_allclose(after, [target_anchor, 0.0, 0.0], atol=1.0e-4)
 
 
@@ -2744,12 +2754,16 @@ def test_vbd_elastic_joint_uses_iteration_consistent_duals(test, device):
     frame/modal solve approaches it from below and the coupled solve from above, and the two
     agree to well under a percent. Asserting a first-iteration magnitude instead would only
     describe whichever layout happened to be in use.
+
+    The band is scaled by ``1 - alpha`` because the clamp is born violated and the stabilized
+    constraint releases only that fraction of it per step.
     """
     converged, solver = _clamped_twist_deflection(device, 256)
     test.assertTrue(solver.rigid_joint_adaptive_stiffness)
 
-    test.assertGreater(converged, 2.5e-3)
-    test.assertLess(converged, 3.5e-3)
+    scale = 1.0 - solver.rigid_joint_alpha
+    test.assertGreater(converged, 2.5e-3 * scale)
+    test.assertLess(converged, 3.5e-3 * scale)
 
     # Half the budget must already agree, otherwise the band above could be satisfied by a
     # solve that is merely passing through it on the way somewhere else.
@@ -2767,14 +2781,18 @@ def test_vbd_elastic_solved_under_both_articulation_modes(test, device):
 
     Both modes must also leave the elastic frame to the coupled block rather than stepping it
     themselves, so they are required to agree on the settled twist and not merely to be nonzero.
+
+    The band is scaled by ``1 - alpha`` for the reason given in
+    :func:`test_vbd_elastic_joint_uses_iteration_consistent_duals`.
     """
     local, _ = _clamped_twist_deflection(device, 256, "local")
-    sparse, _ = _clamped_twist_deflection(device, 256, "block_sparse_joints")
+    sparse, solver = _clamped_twist_deflection(device, 256, "block_sparse_joints")
+    scale = 1.0 - solver.rigid_joint_alpha
 
     # An unsolved elastic body leaves the born-violated clamp untouched, which lands orders of
     # magnitude below this bound rather than merely outside a tolerance.
-    test.assertGreater(sparse, 2.5e-3)
-    test.assertLess(sparse, 3.5e-3)
+    test.assertGreater(sparse, 2.5e-3 * scale)
+    test.assertLess(sparse, 3.5e-3 * scale)
     test.assertLess(abs(local - sparse) / local, 0.05)
 
 
@@ -3173,6 +3191,13 @@ def test_vbd_elastic_modal_joint_damping_projection(test, device):
 
 
 def test_vbd_elastic_angular_constraint_without_linear_stiffness(test, device):
+    """One Newton step on a purely angular constraint must match the closed form.
+
+    The stabilized constraint of Augmented Vertex Block Descent drives ``C - alpha * C0``
+    rather than ``C``, so a born-violated constraint is corrected by only ``1 - alpha`` of its
+    violation per step. That factor applies to elastic and rigid joints alike; it is written
+    out here rather than folded into a literal so the expectation tracks the solver setting.
+    """
     dt = 0.01
     mode_mass = 0.05
     mode_q = 0.3
@@ -3213,7 +3238,8 @@ def test_vbd_elastic_angular_constraint_without_linear_stiffness(test, device):
 
     q_start = int(model.joint_q_start.numpy()[int(model.elastic_joint.numpy()[0])]) + 7
     modal_inertia = mode_mass / (dt * dt)
-    expected = mode_q - angular_k * mode_q / (modal_inertia + angular_k)
+    stabilized = (1.0 - solver.rigid_joint_alpha) * mode_q
+    expected = mode_q - angular_k * stabilized / (modal_inertia + angular_k)
     np.testing.assert_allclose(state_1.joint_q.numpy()[q_start], expected, rtol=1.0e-6, atol=1.0e-7)
 
 
@@ -3270,6 +3296,16 @@ def test_vbd_rigid_angular_damping_includes_modal_velocity(test, device):
 
 
 def test_vbd_elastic_angular_projection_uses_exponential_jacobian(test, device):
+    """The angular block gradient and Hessian must use the exponential-map Jacobian.
+
+    The stabilized constraint of Augmented Vertex Block Descent drives ``C - alpha * C0``
+    rather than ``C``, so a born-violated constraint is corrected by only ``1 - alpha`` of its
+    violation per step. That factor applies to elastic and rigid joints alike; it is written
+    out here rather than folded into a literal so the expectation tracks the solver setting.
+
+    Only the gradient carries the factor: the Hessian is built from the penalty alone and is
+    therefore unchanged by the stabilization.
+    """
     dt = 0.01
     mode_mass = np.array([1.0, 1.0], dtype=np.float32)
     mode_q = np.array([0.6, 0.4], dtype=np.float32)
@@ -3311,7 +3347,7 @@ def test_vbd_elastic_angular_projection_uses_exponential_jacobian(test, device):
 
     theta = psi.T @ mode_q
     projector = np.diag([0.0, 1.0, 1.0])
-    expected_grad = angular_k * psi @ projector @ theta
+    expected_grad = (1.0 - solver.rigid_joint_alpha) * angular_k * psi @ projector @ theta
     expected_hessian = np.diag(mode_mass / (dt * dt)) + angular_k * psi @ projector @ psi.T
     actual_grad = solver.elastic_body_block_grad.numpy()[0, 6:8]
     actual_hessian = solver.elastic_body_block_matrix.numpy()[0, 6:8, 6:8]
@@ -3759,6 +3795,199 @@ def test_elastic_chair_stick_slip_example(test, device):
     _run_reduced_elastic_contact_example(ChairStickSlipExample, 240, device)
 
 
+def _build_clamped_elastic_blade(
+    attach_s: float, mode_shape: str = "cantilever", height: float = 5.0, modal_q0: float = 0.0
+):
+    """Elastic blade clamped to a heavier carriage on a vertical slider, in free fall.
+
+    ``attach_s`` places the clamp along the blade in [0, 1]. The "cantilever" shape vanishes at
+    the root, so a clamp there has zero endpoint phi and never exercises the modal part of the
+    snapshot; "linear" is nonzero away from the root and does.
+
+    ``height`` matters for more than the drop distance: the joint violation is a difference of
+    two world positions in single precision, so releasing from 5 m puts a sub-micron violation
+    at the same scale as one ulp. Tests that read the violation itself should start near the
+    origin. ``modal_q0`` seeds a deformed attachment so the violation is well above that floor.
+    """
+    length, hy, hz = 0.4, 0.03, 0.02
+    points = beam_render_sample_points(length, hy, hz)
+    phi = np.zeros_like(points, dtype=np.float32)
+    s = (points[:, 0] + 0.5 * length) / length
+    if mode_shape == "cantilever":
+        phi[:, 2] = s * s * (3.0 - 2.0 * s)
+    elif mode_shape == "linear":
+        phi[:, 2] = s
+    else:
+        raise ValueError(f"unknown mode_shape {mode_shape!r}")
+    sample_mass = np.full(points.shape[0], 0.3 / points.shape[0], dtype=np.float32)
+    basis = newton.ModalBasis(
+        sample_points=points,
+        sample_phi=phi.reshape((-1, 1, 3)),
+        sample_mass=sample_mass,
+        mode_stiffness=[2.0e3],
+        mode_damping=[0.0],
+        label="blade",
+    )
+
+    builder = newton.ModelBuilder(gravity=-9.81, up_axis="Z")
+    cfg = newton.ModelBuilder.ShapeConfig()
+    cfg.density = 0.0
+    cfg.has_shape_collision = False
+    pose = wp.transform(wp.vec3(0.0, 0.0, height), wp.quat_identity())
+
+    carriage = builder.add_link(
+        xform=pose, mass=12.5, inertia=wp.mat33(0.05, 0, 0, 0, 0.05, 0, 0, 0, 0.05), label="carriage"
+    )
+    builder.add_shape_box(carriage, hx=0.05, hy=0.05, hz=0.05, cfg=cfg)
+    slider = builder.add_joint_prismatic(
+        parent=-1,
+        child=carriage,
+        parent_xform=wp.transform(wp.vec3(0.0, 0.0, 0.0), wp.quat_identity()),
+        axis=newton.Axis.Z,
+        label="slider",
+    )
+    builder.joint_q[builder.joint_q_start[slider]] = height
+
+    blade = builder.add_link_elastic(
+        xform=pose,
+        mass=0.3,
+        com=wp.vec3(0.0, 0.0, 0.0),
+        inertia=wp.mat33(0.004, 0, 0, 0, 0.004, 0, 0, 0, 0.004),
+        modal_basis=basis,
+        lock_inertia=True,
+        label="blade",
+    )
+    builder.add_shape_box(blade, hx=0.5 * length, hy=hy, hz=hz, cfg=cfg)
+
+    root = wp.transform(wp.vec3((attach_s - 0.5) * length, 0.0, 0.0), wp.quat_identity())
+    clamp = builder.add_joint_fixed(parent=carriage, child=blade, parent_xform=root, child_xform=root, label="clamp")
+    if modal_q0 != 0.0:
+        owner = builder.body_elastic_joint[blade]
+        builder.joint_q[builder.joint_q_start[owner] + 7] = modal_q0
+    builder.add_articulation(
+        [slider, builder.body_elastic_joint[blade], clamp], label="leg", allow_closed_loops=True
+    )
+    builder.color()
+    return builder.finalize(), blade, clamp
+
+
+def _run_clamped_blade(
+    device,
+    substeps,
+    iterations,
+    frames,
+    attach_s=0.0,
+    mode_shape="cantilever",
+    height=5.0,
+    modal_q0=0.0,
+):
+    """Drop the clamped blade and return the solver, the peak modal coordinate, and the last state."""
+    model, blade, clamp = _build_clamped_elastic_blade(attach_s, mode_shape, height, modal_q0)
+    with wp.ScopedDevice(device):
+        state_0, state_1 = model.state(), model.state()
+        control = model.control()
+        elastic = int(model.body_elastic_index.numpy()[blade])
+        owner = int(model.elastic_joint.numpy()[elastic])
+        q_index = int(model.joint_q_start.numpy()[owner]) + 7
+        solver = newton.solvers.SolverVBD(
+            model,
+            iterations=iterations,
+            rigid_joint_linear_ke=1.0e6,
+            rigid_joint_angular_ke=1.0e6,
+            rigid_articulation_solve="local",
+        )
+        dt = (1.0 / 200.0) / substeps
+        peak = 0.0
+        previous = None
+        last = frames * substeps - 1
+        step_index = 0
+        for _ in range(frames):
+            for _ in range(substeps):
+                if step_index == last:
+                    previous = types.SimpleNamespace(
+                        body_q=wp.clone(state_0.body_q), joint_q=wp.clone(state_0.joint_q)
+                    )
+                state_0.clear_forces()
+                solver.step(state_0, state_1, control, None, dt)
+                state_0, state_1 = state_1, state_0
+                step_index += 1
+            q = float(state_0.joint_q.numpy()[q_index])
+            if not np.isfinite(q):
+                return solver, math.inf, clamp, previous
+            peak = max(peak, abs(q))
+    return solver, peak, clamp, previous
+
+
+def test_vbd_elastic_endpoint_c0_snapshots_deformed_attachment(test, device):
+    """The AVBD C0 snapshot must be taken at the previous-step *deformed* attachment.
+
+    ``step_joint_C0_lambda`` used to return early for any joint touching a reduced elastic
+    endpoint, leaving C0 at zero while the dual update kept running. That is alpha = 0 in the
+    stabilized constraint of Augmented Vertex Block Descent, which turns the multiplier update
+    from a leaky difference into an integrator; see ``me/math/elastic_dual_runaway.tex``.
+
+    The clamp is placed at the blade tip so the endpoint mode shape is nonzero and the modal
+    term is actually exercised. Comparing against the endpoint reconstructed with and without
+    the modal displacement distinguishes a correct snapshot from one that only restores the
+    rigid frame contribution.
+
+    A zero C0 is the defect itself, so the magnitude check alone fails on the unfixed kernel.
+    The residual is then required to be a small fraction of the modal offset, which is what
+    separates a snapshot taken at the deformed attachment from one taken at the undeformed one.
+    ``body_q`` is integrated in place, so the previous state has to be copied before the final
+    step rather than read back from the solver afterwards.
+    """
+    solver, peak, clamp, previous = _run_clamped_blade(
+        device,
+        substeps=24,
+        iterations=2,
+        frames=5,
+        attach_s=1.0,
+        mode_shape="linear",
+        height=0.0,
+        modal_q0=1.0e-3,
+    )
+    test.assertTrue(math.isfinite(peak))
+
+    model = solver.model
+    test.assertGreater(float(np.abs(model.elastic_endpoint_phi.numpy()).max()), 0.0)
+
+    deformed = joint_endpoint_world(model, previous, clamp, "child") - joint_endpoint_world(
+        model, previous, clamp, "parent"
+    )
+
+    phi = model.elastic_endpoint_phi.numpy()
+    q_prev = float(previous.joint_q.numpy()[int(model.joint_q_start.numpy()[
+        int(model.elastic_joint.numpy()[int(model.body_elastic_index.numpy()[model.joint_child.numpy()[clamp]])])
+    ]) + 7])
+    modal_offset = np.linalg.norm(phi[0] * q_prev)
+    test.assertGreater(modal_offset, 0.0)
+
+    c0 = solver.joint_C0_lin.numpy()[clamp]
+    test.assertGreater(float(np.linalg.norm(c0)), 0.0)
+    test.assertLess(float(np.linalg.norm(c0 - deformed)), 0.05 * modal_offset)
+
+
+def test_vbd_elastic_clamp_free_fall_stays_bounded(test, device):
+    """A clamped elastic body in free fall must not diverge as the step is refined.
+
+    With C0 held at zero the joint multiplier integrates the standing violation instead of
+    tracking it, and the loop leaves the unit circle once the penalty is weak against the
+    inertial stiffness. The failure grows with substep count and shrinks with iteration count,
+    inverting the usual trade: 24 substeps at 2 iterations diverged while 4 substeps did not.
+    The coarse step is checked alongside the refined one so the test pins that inversion rather
+    than merely asserting the refined case stays finite.
+    """
+    _, peak_fine, _, _ = _run_clamped_blade(device, substeps=24, iterations=2, frames=30)
+    test.assertTrue(math.isfinite(peak_fine))
+    test.assertLess(peak_fine, 1.0e-2)
+
+    _, peak_coarse, _, _ = _run_clamped_blade(device, substeps=4, iterations=2, frames=30)
+
+    test.assertTrue(math.isfinite(peak_coarse))
+    test.assertLess(peak_coarse, 1.0e-2)
+
+
 class TestReducedElasticBody(unittest.TestCase):
     pass
 
@@ -3766,6 +3995,18 @@ class TestReducedElasticBody(unittest.TestCase):
 for device in devices:
     add_function_test(
         TestReducedElasticBody, "test_modal_basis_add_sample", test_modal_basis_add_sample, devices=[device]
+    )
+    add_function_test(
+        TestReducedElasticBody,
+        "test_vbd_elastic_endpoint_c0_snapshots_deformed_attachment",
+        test_vbd_elastic_endpoint_c0_snapshots_deformed_attachment,
+        devices=[device],
+    )
+    add_function_test(
+        TestReducedElasticBody,
+        "test_vbd_elastic_clamp_free_fall_stays_bounded",
+        test_vbd_elastic_clamp_free_fall_stays_bounded,
+        devices=[device],
     )
     add_function_test(
         TestReducedElasticBody,
