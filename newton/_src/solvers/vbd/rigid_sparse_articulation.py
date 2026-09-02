@@ -128,9 +128,19 @@ def _connected_body_groups(
 
 
 def build_rigid_articulation_sparse_layout(
-    model, device: wp.context.Devicelike
+    model, device: wp.context.Devicelike, excluded_bodies: np.ndarray | None = None
 ) -> RigidArticulationSparseLayout | None:
-    """Build the static articulation sparse layout from joint connectivity."""
+    """Build the static articulation sparse layout from joint connectivity.
+
+    Args:
+        model: Model supplying the joint connectivity.
+        device: Device the layout arrays are allocated on.
+        excluded_bodies: Boolean mask of bodies another solve owns, shape ``[body_count]``.
+            Excluded bodies get no row in the articulation system and no local index, and the
+            joints reaching them are assembled one-sided against their live end. This is
+            equivalent to anchoring them with an infinite diagonal, since eliminating such a
+            body contributes nothing to its neighbours, but it does not pay for the row.
+    """
 
     if model.body_count == 0:
         return None
@@ -159,6 +169,13 @@ def build_rigid_articulation_sparse_layout(
     body_articulation_local_host = np.full((model.body_count,), -1, dtype=np.int32)
 
     articulation_groups = _connected_body_groups(model.body_count, joint_parent, joint_child)
+
+    if excluded_bodies is not None:
+        live_groups = []
+        for bodies, joints in articulation_groups:
+            live = [body for body in bodies if not excluded_bodies[body]]
+            live_groups.append((live if live else bodies, joints))
+        articulation_groups = live_groups
 
     for articulation_sparse, (bodies, joints) in enumerate(articulation_groups):
         local_index = {body: i for i, body in enumerate(bodies)}

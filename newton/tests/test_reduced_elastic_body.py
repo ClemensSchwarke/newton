@@ -1766,13 +1766,14 @@ def _build_articulated_elastic_contact_model(device):
     return builder.finalize(device=device), body
 
 
-def test_vbd_elastic_frame_is_pinned_in_sparse_articulation(test, device):
-    """The articulation must not compute a frame delta for a body whose frame it does not own.
+def test_vbd_elastic_frame_is_excluded_from_sparse_articulation(test, device):
+    """The articulation must own no row for a body whose frame it does not solve.
 
     A reduced elastic body's frame is solved in its own (6 + n_m) block. Leaving live rows in
     the articulation and discarding the resulting delta puts a spurious force of size
-    ||H_re delta_e|| on every neighbour, so the rows are pinned instead and the delta the
-    articulation produces for that body is zero.
+    ||H_re delta_e|| on every neighbour, so the body is left out of the layout and the joints
+    reaching it are assembled against their live end alone. Factoring a row whose delta is
+    then thrown away is what an anchored row costs, and this asserts it is not paid.
     """
     model, body = _build_articulated_elastic_contact_model(device)
     state_0 = model.state()
@@ -1797,19 +1798,17 @@ def test_vbd_elastic_frame_is_pinned_in_sparse_articulation(test, device):
     layout = solver.rigid_articulation_sparse_layout
     test.assertIsNotNone(layout)
     articulation_bodies = layout.articulation_bodies.numpy()
-    local_index = int(np.flatnonzero(articulation_bodies == body)[0])
+    test.assertEqual(int(np.count_nonzero(articulation_bodies == body)), 0)
+    test.assertEqual(int(layout.body_articulation_local.numpy()[body]), -1)
+    test.assertGreater(len(articulation_bodies), 0)
 
     delta_scalar = solver.rigid_articulation_sparse_delta_scalar
     if delta_scalar is not None:
         delta = delta_scalar.numpy().reshape(-1, 6)
     else:
         delta = solver.rigid_articulation_sparse_delta.numpy().reshape(-1, 6)
-    elastic_delta = float(np.max(np.abs(delta[local_index])))
-    other = np.delete(np.arange(delta.shape[0]), local_index)
-    neighbour_delta = float(np.max(np.abs(delta[other])))
 
-    test.assertGreater(neighbour_delta, 0.0)
-    test.assertLess(elastic_delta, 1.0e-12)
+    test.assertGreater(float(np.max(np.abs(delta))), 0.0)
 
 
 def test_elastic_contact_local_mat33_projection_matches_world(test, device):
@@ -4306,8 +4305,8 @@ for device in devices:
     )
     add_function_test(
         TestReducedElasticBody,
-        "test_vbd_elastic_frame_is_pinned_in_sparse_articulation",
-        test_vbd_elastic_frame_is_pinned_in_sparse_articulation,
+        "test_vbd_elastic_frame_is_excluded_from_sparse_articulation",
+        test_vbd_elastic_frame_is_excluded_from_sparse_articulation,
         devices=[device],
     )
     add_function_test(

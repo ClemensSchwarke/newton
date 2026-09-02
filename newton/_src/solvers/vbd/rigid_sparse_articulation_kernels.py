@@ -462,7 +462,8 @@ def _assemble_angular_direct_pair(
     rhs_child = _vec6_from_parts(wp.vec3(0.0), -torque_parent)
     H_block = _mat66_from_angular_block(H_aa)
 
-    if parent_body >= 0 and parent_local >= 0:
+    parent_live = parent_body >= 0 and parent_local >= 0
+    if parent_live and child_local >= 0:
         _add_rhs(rhs, body_start + parent_local, rhs_parent)
         _add_rhs(rhs, body_start + child_local, rhs_child)
 
@@ -486,12 +487,18 @@ def _assemble_angular_direct_pair(
                 articulation_block_row_offsets, articulation_block_cols, body_start, child_local, parent_local
             )
             _add_mat66(values, slot_cp, H_cross)
-    else:
+    elif child_local >= 0:
         _add_rhs(rhs, body_start + child_local, rhs_child)
         slot_cc = _find_block_slot(
             articulation_block_row_offsets, articulation_block_cols, body_start, child_local, child_local
         )
         _add_mat66(values, slot_cc, H_block)
+    elif parent_live:
+        _add_rhs(rhs, body_start + parent_local, rhs_parent)
+        slot_pp_only = _find_block_slot(
+            articulation_block_row_offsets, articulation_block_cols, body_start, parent_local, parent_local
+        )
+        _add_mat66(values, slot_pp_only, H_block)
 
 
 @wp.func
@@ -578,7 +585,8 @@ def _assemble_linear_joint(
     child_pose = body_q[child_body]
     r_child = child_anchor - wp.transform_point(child_pose, body_com[child_body])
 
-    if parent_body >= 0 and parent_local >= 0:
+    parent_live = parent_body >= 0 and parent_local >= 0
+    if parent_live and child_local >= 0:
         parent_pose = body_q[parent_body]
         r_parent = parent_anchor - wp.transform_point(parent_pose, body_com[parent_body])
         _assemble_constraint_pair(
@@ -599,7 +607,7 @@ def _assemble_linear_joint(
             False,
             False,
         )
-    else:
+    elif child_local >= 0:
         _assemble_constraint_single(
             values,
             rhs,
@@ -613,6 +621,24 @@ def _assemble_linear_joint(
             P,
             r_child,
             False,
+            False,
+        )
+    elif parent_live:
+        parent_pose_only = body_q[parent_body]
+        r_parent_only = parent_anchor - wp.transform_point(parent_pose_only, body_com[parent_body])
+        _assemble_constraint_single(
+            values,
+            rhs,
+            articulation_block_row_offsets,
+            articulation_block_cols,
+            body_start,
+            parent_local,
+            force_residual,
+            1.0,
+            hessian_scale,
+            P,
+            r_parent_only,
+            True,
             False,
         )
 
@@ -700,7 +726,8 @@ def _assemble_linear_axis_row(
     child_pose = body_q[child_body]
     r_child = child_anchor - wp.transform_point(child_pose, body_com[child_body])
 
-    if parent_body >= 0 and parent_local >= 0:
+    parent_live = parent_body >= 0 and parent_local >= 0
+    if parent_live and child_local >= 0:
         parent_pose = body_q[parent_body]
         r_parent = parent_anchor - wp.transform_point(parent_pose, body_com[parent_body])
         _assemble_constraint_pair(
@@ -721,7 +748,7 @@ def _assemble_linear_axis_row(
             False,
             False,
         )
-    else:
+    elif child_local >= 0:
         _assemble_constraint_single(
             values,
             rhs,
@@ -735,6 +762,24 @@ def _assemble_linear_axis_row(
             P,
             r_child,
             False,
+            False,
+        )
+    elif parent_live:
+        parent_pose_only = body_q[parent_body]
+        r_parent_only = parent_anchor - wp.transform_point(parent_pose_only, body_com[parent_body])
+        _assemble_constraint_single(
+            values,
+            rhs,
+            articulation_block_row_offsets,
+            articulation_block_cols,
+            body_start,
+            parent_local,
+            residual,
+            force_scalar,
+            hessian_scalar,
+            P,
+            r_parent_only,
+            True,
             False,
         )
 
@@ -915,7 +960,8 @@ def _assemble_angular_direct_pair_scalar(
     rhs_child = _vec6_from_parts(wp.vec3(0.0), -torque_parent)
     H_block = _mat66_from_angular_block(H_aa)
 
-    if parent_body >= 0 and parent_local >= 0:
+    parent_live = parent_body >= 0 and parent_local >= 0
+    if parent_live and child_local >= 0:
         _add_rhs_scalar_atomic(rhs_scalar, body_start + parent_local, rhs_parent)
         _add_rhs_scalar_atomic(rhs_scalar, body_start + child_local, rhs_child)
         slot_pp = _find_block_slot(
@@ -938,12 +984,18 @@ def _assemble_angular_direct_pair_scalar(
                 articulation_block_row_offsets, articulation_block_cols, body_start, child_local, parent_local
             )
             _add_mat66_scalar_atomic(values_scalar, slot_cp, H_cross)
-    else:
+    elif child_local >= 0:
         _add_rhs_scalar_atomic(rhs_scalar, body_start + child_local, rhs_child)
         slot_cc = _find_block_slot(
             articulation_block_row_offsets, articulation_block_cols, body_start, child_local, child_local
         )
         _add_mat66_scalar_atomic(values_scalar, slot_cc, H_block)
+    elif parent_live:
+        _add_rhs_scalar_atomic(rhs_scalar, body_start + parent_local, rhs_parent)
+        slot_pp_only = _find_block_slot(
+            articulation_block_row_offsets, articulation_block_cols, body_start, parent_local, parent_local
+        )
+        _add_mat66_scalar_atomic(values_scalar, slot_pp_only, H_block)
 
 
 @wp.func
@@ -984,7 +1036,8 @@ def _assemble_linear_joint_scalar(
     child_pose = body_q[child_body]
     r_child = child_anchor - wp.transform_point(child_pose, body_com[child_body])
 
-    if parent_body >= 0 and parent_local >= 0:
+    parent_live = parent_body >= 0 and parent_local >= 0
+    if parent_live and child_local >= 0:
         parent_pose = body_q[parent_body]
         r_parent = parent_anchor - wp.transform_point(parent_pose, body_com[parent_body])
         _assemble_constraint_pair_scalar(
@@ -1005,7 +1058,7 @@ def _assemble_linear_joint_scalar(
             False,
             False,
         )
-    else:
+    elif child_local >= 0:
         _assemble_constraint_single_scalar(
             values_scalar,
             rhs_scalar,
@@ -1019,6 +1072,24 @@ def _assemble_linear_joint_scalar(
             P,
             r_child,
             False,
+            False,
+        )
+    elif parent_live:
+        parent_pose_only = body_q[parent_body]
+        r_parent_only = parent_anchor - wp.transform_point(parent_pose_only, body_com[parent_body])
+        _assemble_constraint_single_scalar(
+            values_scalar,
+            rhs_scalar,
+            articulation_block_row_offsets,
+            articulation_block_cols,
+            body_start,
+            parent_local,
+            force_residual,
+            1.0,
+            hessian_scale,
+            P,
+            r_parent_only,
+            True,
             False,
         )
 
@@ -1105,7 +1176,8 @@ def _assemble_linear_axis_row_scalar(
     child_pose = body_q[child_body]
     r_child = child_anchor - wp.transform_point(child_pose, body_com[child_body])
 
-    if parent_body >= 0 and parent_local >= 0:
+    parent_live = parent_body >= 0 and parent_local >= 0
+    if parent_live and child_local >= 0:
         parent_pose = body_q[parent_body]
         r_parent = parent_anchor - wp.transform_point(parent_pose, body_com[parent_body])
         _assemble_constraint_pair_scalar(
@@ -1126,7 +1198,7 @@ def _assemble_linear_axis_row_scalar(
             False,
             False,
         )
-    else:
+    elif child_local >= 0:
         _assemble_constraint_single_scalar(
             values_scalar,
             rhs_scalar,
@@ -1140,6 +1212,24 @@ def _assemble_linear_axis_row_scalar(
             P,
             r_child,
             False,
+            False,
+        )
+    elif parent_live:
+        parent_pose_only = body_q[parent_body]
+        r_parent_only = parent_anchor - wp.transform_point(parent_pose_only, body_com[parent_body])
+        _assemble_constraint_single_scalar(
+            values_scalar,
+            rhs_scalar,
+            articulation_block_row_offsets,
+            articulation_block_cols,
+            body_start,
+            parent_local,
+            residual,
+            force_scalar,
+            hessian_scalar,
+            P,
+            r_parent_only,
+            True,
             False,
         )
 
@@ -2157,6 +2247,21 @@ def solve_articulation_sparse_block32_scalar(
 
         if warp == 0:
             _warp_sync()
+
+
+@wp.kernel
+def carry_articulation_excluded_body_q(
+    excluded_bodies: wp.array[wp.int32],
+    body_q: wp.array[wp.transform],
+    body_q_new: wp.array[wp.transform],
+):
+    """Carry poses of bodies the articulation does not own through to the output state.
+
+    Bodies excluded from the layout receive no delta, so nothing else writes them and the
+    copy back over ``body_q`` would otherwise restore a stale pose.
+    """
+    body = excluded_bodies[wp.tid()]
+    body_q_new[body] = body_q[body]
 
 
 @wp.kernel

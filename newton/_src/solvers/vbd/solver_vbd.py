@@ -65,6 +65,7 @@ from .rigid_sparse_articulation_kernels import (
     apply_articulation_sparse_delta_scalar,
     assemble_articulation_body_diagonal_scalar,
     assemble_articulation_joints_scalar,
+    carry_articulation_excluded_body_q,
     mat66f,
     regularize_articulation_body_hessian,
     solve_articulation_sparse_block32_scalar,
@@ -551,8 +552,36 @@ class SolverVBD(SolverBase):
         self.rigid_articulation_sparse_values_scalar = None
         self.rigid_articulation_sparse_rhs_scalar = None
         self.rigid_articulation_sparse_delta_scalar = None
+        self.rigid_articulation_excluded_bodies = None
+        """Bodies the articulation layout omits [body index], carried through each solve."""
+        self.rigid_articulation_contact_bodies = None
+        """Bodies the sparse path accumulates contacts for [body index].
+
+        Excluded bodies own no articulation row but still collide, and the elastic block reads
+        the resulting ``body_forces``/``body_hessian_*``, so contact accumulation runs over the
+        articulation bodies plus the excluded ones.
+        """
         if self.rigid_articulation_solve == "block_sparse_joints":
-            self.rigid_articulation_sparse_layout = build_rigid_articulation_sparse_layout(model, self.device)
+            excluded_bodies = None
+            if self._elastic_frame_in_block and model.elastic_body_count > 0:
+                excluded_bodies = model.body_elastic_index.numpy() >= 0
+            self.rigid_articulation_sparse_layout = build_rigid_articulation_sparse_layout(
+                model, self.device, excluded_bodies
+            )
+            if excluded_bodies is not None and self.rigid_articulation_sparse_layout is not None:
+                body_local = self.rigid_articulation_sparse_layout.body_articulation_local.numpy()
+                excluded_body_ids = np.nonzero(excluded_bodies & (body_local < 0))[0].astype(np.int32)
+                if excluded_body_ids.size > 0:
+                    self.rigid_articulation_excluded_bodies = wp.array(
+                        excluded_body_ids, dtype=wp.int32, device=self.device
+                    )
+                    self.rigid_articulation_contact_bodies = wp.array(
+                        np.concatenate(
+                            (self.rigid_articulation_sparse_layout.articulation_bodies.numpy(), excluded_body_ids)
+                        ),
+                        dtype=wp.int32,
+                        device=self.device,
+                    )
             if self.rigid_articulation_sparse_layout is not None:
                 self.rigid_articulation_sparse_values = wp.zeros(
                     self.rigid_articulation_sparse_layout.block_count, dtype=mat66f, device=self.device
@@ -2006,6 +2035,7 @@ class SolverVBD(SolverBase):
                 state_in.body_qd,
             ],
             device=self.device,
+            block_dim=32,
         )
 
         wp.launch(
@@ -2030,6 +2060,7 @@ class SolverVBD(SolverBase):
                 state_out.joint_qd,
             ],
             device=self.device,
+            block_dim=32,
         )
 
     def _finalize_elastic_bodies(self, state_out: State):
@@ -2054,6 +2085,7 @@ class SolverVBD(SolverBase):
                 state_out.joint_qd,
             ],
             device=self.device,
+            block_dim=32,
         )
 
     def _accumulate_elastic_frame_coupling(self, state_in: State, state_out: State, dt: float):
@@ -3248,7 +3280,6 @@ class SolverVBD(SolverBase):
                             device=self.device,
                         )
 
-
             assemble_elastic_block()
             wp.launch(
                 kernel=solve_rigid_body,
@@ -3469,7 +3500,9 @@ class SolverVBD(SolverBase):
         self._accumulate_elastic_frame_coupling(state_in, state_out, dt)
 
         sparse_body_group = layout.articulation_bodies
-        sparse_body_dim = layout.articulation_body_count * _NUM_CONTACT_THREADS_PER_BODY
+        if self.rigid_articulation_contact_bodies is not None:
+            sparse_body_group = self.rigid_articulation_contact_bodies
+        sparse_body_dim = sparse_body_group.size * _NUM_CONTACT_THREADS_PER_BODY
         if model.particle_count > 0 and contacts is not None:
             wp.launch(
                 kernel=accumulate_body_particle_contacts_per_body,
@@ -3812,6 +3845,16 @@ class SolverVBD(SolverBase):
                 block_dim=32,
             )
 
+        if self.rigid_articulation_excluded_bodies is not None:
+            wp.launch(
+                kernel=carry_articulation_excluded_body_q,
+                dim=self.rigid_articulation_excluded_bodies.size,
+                inputs=[self.rigid_articulation_excluded_bodies, state_in.body_q],
+                outputs=[state_out.body_q],
+                device=self.device,
+                block_dim=32,
+            )
+
         wp.copy(state_in.body_q, state_out.body_q)
 
         # The elastic block owns the reduced elastic frame in both rigid solve paths: frame and
@@ -3903,6 +3946,7 @@ class SolverVBD(SolverBase):
                     self.elastic_body_block_matrix,
                 ],
                 device=self.device,
+                block_dim=32,
             )
 
             if rigid_contact_max > 0:
