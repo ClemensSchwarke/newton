@@ -476,14 +476,7 @@ class SolverVBD(SolverBase):
             raise ValueError("rigid_joint_armature requires rigid_articulation_solve='block_sparse_joints'")
         self.rigid_articulation_solve = rigid_articulation_solve
         self.rigid_articulation_relaxation = rigid_articulation_relaxation
-        self._elastic_frame_in_block = True
-        """Solve a reduced elastic body's floating frame in its own (6 + n_m) block.
-
-        When false the frame reverts to the pre-merge arrangement: the rigid solve owns it
-        (per-colour locally, or as live rows in the articulation) and the elastic block holds
-        only the modal coordinates. Kept private for A/B comparison of the two architectures;
-        the unified block is the supported configuration.
-        """
+        self._elastic_frame_in_block_value = True
         self._elastic_reassemble_after_frame_solve = False
         """Rebuild the elastic block after the rigid solve when the frame is not in the block.
 
@@ -562,55 +555,85 @@ class SolverVBD(SolverBase):
         articulation bodies plus the excluded ones.
         """
         if self.rigid_articulation_solve == "block_sparse_joints":
-            excluded_bodies = None
-            if self._elastic_frame_in_block and model.elastic_body_count > 0:
-                excluded_bodies = model.body_elastic_index.numpy() >= 0
-            self.rigid_articulation_sparse_layout = build_rigid_articulation_sparse_layout(
-                model, self.device, excluded_bodies
-            )
-            if excluded_bodies is not None and self.rigid_articulation_sparse_layout is not None:
-                body_local = self.rigid_articulation_sparse_layout.body_articulation_local.numpy()
-                excluded_body_ids = np.nonzero(excluded_bodies & (body_local < 0))[0].astype(np.int32)
-                if excluded_body_ids.size > 0:
-                    self.rigid_articulation_excluded_bodies = wp.array(
-                        excluded_body_ids, dtype=wp.int32, device=self.device
-                    )
-                    self.rigid_articulation_contact_bodies = wp.array(
-                        np.concatenate(
-                            (self.rigid_articulation_sparse_layout.articulation_bodies.numpy(), excluded_body_ids)
-                        ),
-                        dtype=wp.int32,
-                        device=self.device,
-                    )
-            if self.rigid_articulation_sparse_layout is not None:
-                self.rigid_articulation_sparse_values = wp.zeros(
-                    self.rigid_articulation_sparse_layout.block_count, dtype=mat66f, device=self.device
-                )
-                self.rigid_articulation_sparse_rhs = wp.zeros(
-                    self.rigid_articulation_sparse_layout.articulation_body_count, dtype=vec6f, device=self.device
-                )
-                self.rigid_articulation_sparse_delta = wp.zeros(
-                    self.rigid_articulation_sparse_layout.articulation_body_count, dtype=vec6f, device=self.device
-                )
-                if self.device.is_cuda:
-                    self.rigid_articulation_sparse_values_scalar = wp.zeros(
-                        self.rigid_articulation_sparse_layout.block_count * 36, dtype=float, device=self.device
-                    )
-                    self.rigid_articulation_sparse_rhs_scalar = wp.zeros(
-                        self.rigid_articulation_sparse_layout.articulation_body_count * 6,
-                        dtype=float,
-                        device=self.device,
-                    )
-                    self.rigid_articulation_sparse_delta_scalar = wp.zeros(
-                        self.rigid_articulation_sparse_layout.articulation_body_count * 6,
-                        dtype=float,
-                        device=self.device,
-                    )
+            self._build_rigid_articulation_sparse_layout()
 
         # Controls whether the next step() refreshes contact state derived from
         # the Contacts buffer or reuses the current rigid/body-particle contact state.
         # Defaults to True and is reset to True when consumed by step().
         self._update_rigid_history = True
+
+    @property
+    def _elastic_frame_in_block(self) -> bool:
+        """Solve a reduced elastic body's floating frame in its own (6 + n_m) block.
+
+        When false the frame reverts to the pre-merge arrangement: the rigid solve owns it
+        (per-colour locally, or as live rows in the articulation) and the elastic block holds
+        only the modal coordinates. Kept private for A/B comparison of the two architectures;
+        the unified block is the supported configuration.
+
+        Assigning rebuilds the articulation layout, because the sparse path leaves the frame
+        out of it only in the unified arrangement.
+        """
+        return self._elastic_frame_in_block_value
+
+    @_elastic_frame_in_block.setter
+    def _elastic_frame_in_block(self, value: bool):
+        value = bool(value)
+        if value == self._elastic_frame_in_block_value:
+            return
+        self._elastic_frame_in_block_value = value
+        if self.rigid_articulation_solve == "block_sparse_joints":
+            self._build_rigid_articulation_sparse_layout()
+
+    def _build_rigid_articulation_sparse_layout(self):
+        """Build the articulation layout and the arrays sized from it."""
+        model = self.model
+        self.rigid_articulation_excluded_bodies = None
+        self.rigid_articulation_contact_bodies = None
+        excluded_bodies = None
+        if self._elastic_frame_in_block_value and model.elastic_body_count > 0:
+            excluded_bodies = model.body_elastic_index.numpy() >= 0
+        self.rigid_articulation_sparse_layout = build_rigid_articulation_sparse_layout(
+            model, self.device, excluded_bodies
+        )
+        if excluded_bodies is not None and self.rigid_articulation_sparse_layout is not None:
+            body_local = self.rigid_articulation_sparse_layout.body_articulation_local.numpy()
+            excluded_body_ids = np.nonzero(excluded_bodies & (body_local < 0))[0].astype(np.int32)
+            if excluded_body_ids.size > 0:
+                self.rigid_articulation_excluded_bodies = wp.array(
+                    excluded_body_ids, dtype=wp.int32, device=self.device
+                )
+                self.rigid_articulation_contact_bodies = wp.array(
+                    np.concatenate(
+                        (self.rigid_articulation_sparse_layout.articulation_bodies.numpy(), excluded_body_ids)
+                    ),
+                    dtype=wp.int32,
+                    device=self.device,
+                )
+        if self.rigid_articulation_sparse_layout is not None:
+            self.rigid_articulation_sparse_values = wp.zeros(
+                self.rigid_articulation_sparse_layout.block_count, dtype=mat66f, device=self.device
+            )
+            self.rigid_articulation_sparse_rhs = wp.zeros(
+                self.rigid_articulation_sparse_layout.articulation_body_count, dtype=vec6f, device=self.device
+            )
+            self.rigid_articulation_sparse_delta = wp.zeros(
+                self.rigid_articulation_sparse_layout.articulation_body_count, dtype=vec6f, device=self.device
+            )
+            if self.device.is_cuda:
+                self.rigid_articulation_sparse_values_scalar = wp.zeros(
+                    self.rigid_articulation_sparse_layout.block_count * 36, dtype=float, device=self.device
+                )
+                self.rigid_articulation_sparse_rhs_scalar = wp.zeros(
+                    self.rigid_articulation_sparse_layout.articulation_body_count * 6,
+                    dtype=float,
+                    device=self.device,
+                )
+                self.rigid_articulation_sparse_delta_scalar = wp.zeros(
+                    self.rigid_articulation_sparse_layout.articulation_body_count * 6,
+                    dtype=float,
+                    device=self.device,
+                )
 
     def _validate_elastic_body_block_width(self, block_width: int):
         """Reject a block width whose tiles cannot fit in the device shared memory budget.

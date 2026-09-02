@@ -1,9 +1,10 @@
-# Discretization, cost and stability of the reduced elastic leg in the drop test
+# Discretization and stability of the reduced elastic leg in the drop test
 
 `shank_parity.md` established how finely the PRDM spring chain must be discretized but did not
 do the same for the reduced elastic blade, and its measurements predate the unified elastic
-solve. This report covers both: how few substeps and iterations the elastic leg needs, and
-what the unified arrangement costs against the split one.
+solve. This report covers how few substeps and iterations the elastic leg needs, under both
+arrangements of its degrees of freedom. What the arrangement costs is measured in
+`elastic_unified_vs_split.md` instead, on a model where the elastic path is not negligible.
 
 Both legs are dropped in the same model under one solver. The PRDM chain is rigid and cannot
 be affected by the elastic arrangement, so it serves as a control.
@@ -24,21 +25,18 @@ python -m me.scripts.shank_parity.drop_elastic_solve
 
 **Summary.**
 
-1. Cost is the same for both arrangements at every point of the grid, within `2%`, and the
-   current tree is `3%` slower than pre-merge at matched settings. Neither accounts for a
-   noticeable training slowdown.
-2. Substeps and iterations must be raised together. The minimum iteration count for stability
+1. Substeps and iterations must be raised together. The minimum iteration count for stability
    rises with the substep count: 2 iterations suffice at 4 substeps, 10 are needed at 12 to 16,
    and 20 at 24 to 32. Refining the step alone destabilises the leg.
-3. Substeps are the accuracy-limiting axis and are not converged at 16. Along the
+2. Substeps are the accuracy-limiting axis and are not converged at 16. Along the
    iteration-converged column the squash rises monotonically `13.39, 14.05, 14.52, 14.72 mm`
    with decrements `0.66, 0.48, 0.19`.
-4. At the training preset the squash is `9%` below the `16x40` value, and iterations cannot
+3. At the training preset the squash is `9%` below the `16x40` value, and iterations cannot
    close it: at 2 substeps, raising iterations from 10 to 40 changes the squash by `0.07%`.
-5. The unified arrangement is less robust than the split one. Beyond the shared requirement of
-   point 2 it also diverges at `8x2`, `12x5`, `16x20`, `32x20` and `32x40`, where split does
+4. The unified arrangement is less robust than the split one. Beyond the shared requirement of
+   point 1 it also diverges at `8x2`, `12x5`, `16x20`, `32x20` and `32x40`, where split does
    not.
-6. Return height does not converge over the range swept and is worse for the unified model 
+5. Return height does not converge over the range swept and is worse for the unified model 
    (compare to `shank_parity.md`).
 
 ---
@@ -56,7 +54,7 @@ the natively split tree. First-impact squash in mm:
 | 16x20 | 14.99 | 16.25 | 8.4% |
 
 The first three agree. `16x20` does not, and that configuration is adjacent to the instability
-of section 4. Values are not identical because the structure of the algorithm changed with the port, even for the split case.
+of section 3. Values are not identical because the structure of the algorithm changed with the port, even for the split case.
 
 Repeat runs of any configuration are bit-identical, so no measurement below is stochastic.
 
@@ -109,44 +107,7 @@ The two axes move the squash in opposite directions.
 that requires more of them, and converges towards the same region: `14.505` at `8x40` and
 `14.974` at `16x40` against unified's `14.524` and `14.718`.
 
-## 3. Cost
-
-Milliseconds per frame, measured on a separate instance after 10 warmup frames over 60 timed
-frames, `wp.synchronize_device` around the timed region.
-
-unified
-
-| substeps | 2 | 5 | 10 | 20 | 40 |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 2 | 3.40 | 5.62 | 9.40 | 16.92 | 31.94 |
-| 4 | 6.65 | 11.30 | 18.72 | 33.42 | 63.58 |
-| 8 | 13.20 | 22.28 | 37.46 | 67.04 | 128.07 |
-| 16 | 26.57 | 44.51 | 75.48 | 136.23 | 256.91 |
-
-split
-
-| substeps | 2 | 5 | 10 | 20 | 40 |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 2 | 3.30 | 5.60 | 9.43 | 17.20 | 32.03 |
-| 4 | 6.63 | 11.13 | 19.12 | 34.15 | 64.39 |
-| 8 | 13.17 | 22.54 | 38.05 | 68.46 | 129.36 |
-| 16 | 26.48 | 44.95 | 75.90 | 137.29 | 260.30 |
-
-The two arrangements differ by at most `2%` at any point, with no consistent sign. Cost scales linearly in
-the product of substeps and iterations, as expected.
-
-Against the pre-merge tree at matched settings:
-
-| config | HEAD | pre-merge | ratio |
-| ---: | ---: | ---: | ---: |
-| 2x4 | 4.719 | 4.792 | 0.985 |
-| 2x10 | 9.287 | 9.001 | 1.032 |
-| 4x10 | 18.528 | 17.947 | 1.032 |
-| 8x10 | 36.870 | 35.837 | 1.029 |
-
-The current tree is approximately `3%` slower than pre-merge, flat across discretizations.
-
-## 4. Stability
+## 3. Stability
 
 Maximum `|z|` of the elastic payload over `0.4 s`, in metres. The resting value is `0.5867`;
 `div` marks a run that left the resting state or produced non-finite values.
@@ -190,7 +151,7 @@ iterations hurt, and it is not diagnosed.
 
 The training preset `2x10` is far inside the stable region on both arrangements.
 
-## 5. Return height
+## 4. Return height
 
 Unified, in mm.
 
@@ -204,7 +165,7 @@ Unified, in mm.
 The quantity rises with substeps through 8, falls at `16x10`, and rises again at `16x40`. It is
 not converged over this range and no conclusion is drawn from it.
 
-## 6. Control
+## 5. Control
 
 Maximum absolute difference in PRDM squash between the two arrangements, over all 12
 configurations: `0.000e+00`. The arrangement affects only the elastic path.
@@ -213,7 +174,7 @@ configurations: `0.000e+00`. The arrangement affects only the elastic path.
 
 | path | what |
 | --- | --- |
-| `me/scripts/shank_parity/drop_elastic_solve.py` | discretization grid, cost and convergence |
+| `me/scripts/shank_parity/drop_elastic_solve.py` | discretization grid and convergence |
 | `me/data/shank_parity/drop_elastic_solve.json` | cached measurements |
 | `newton/examples/robot/example_robot_compliant_shank_drop.py` | the drop model |
 | `me/reports/shank_parity.md` | the chain/blade comparison this extends |

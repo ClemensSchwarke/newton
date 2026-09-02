@@ -24,22 +24,25 @@ python -m me.scripts.shank_parity.drop_elastic_stability
 1. Divergence is gone. Every cell of both grids is finite for both arrangements. Before the fix
    the stability grid diverged in 14 of 30 unified cells and 9 of 30 split cells; it now
    diverges in none.
-2. The reversal reported in `drop_elastic_solve.md` section 4 is gone. Refining the step no
+2. The reversal reported in `drop_elastic_solve.md` section 3 is gone. Refining the step no
    longer requires more iterations, and the `16x20` pocket that was stable-unstable-stable no
    longer exists.
-3. Cost is unchanged, and marginally lower at the expensive end: `251.7` against `256.9 ms`
-   per frame at `16x40` unified. The fix adds three array reads per joint in a kernel that runs
-   once per step.
-4. Accuracy at converged settings is essentially unmoved: the 40-iteration column reads
+3. Accuracy at converged settings is essentially unmoved: the 40-iteration column reads
    `13.387, 14.048, 14.530, 14.757 mm` against `13.387, 14.048, 14.524, 14.718` before. The
    substep axis is still the accuracy-limiting one and is still not converged at 16.
-5. The unified arrangement is the better one on every axis measured, not only on stability,
-   reversing the previous report's point 5. It never diverges and never gains energy, where
-   split still overshoots in five cells. It is far closer to the converged squash at low
-   substep and iteration counts and approaches it from below, where split overshoots by up to
-   `43%`. Its return height stays inside `[26, 44] mm` across the grid while split ranges from
-   `-2` to `224 mm` with no trend. The separation is widest exactly where a training preset
-   lives, which makes unified the more usable arrangement and not merely the safer one.
+4. In the drop test the unified arrangement is the better one on every axis measured, not only
+   on stability, reversing the previous report's point 4. It never diverges and never gains
+   energy, where split still overshoots in five cells. It is far closer to the converged squash
+   at low substep and iteration counts and approaches it from below, where split overshoots by
+   up to `43%`. Its return height stays inside `[26, 44] mm` across the grid while split ranges
+   from `-2` to `224 mm` with no trend. The separation is widest exactly where a training
+   preset lives, which makes unified the more usable arrangement here and not merely the safer
+   one.
+5. That ordering is specific to the drop, and section 4.1 reverses it. On the contact-free step
+   load, split reaches the static equilibrium at 10 iterations at every substep count while
+   unified settles `8.03%` high at 16 substeps. Both reach the same deflection once iterated
+   far enough, so it is an iteration requirement rather than a bias, but which arrangement
+   needs more iterations depends on the configuration and cannot be read off the drop alone.
 
 ---
 
@@ -73,7 +76,7 @@ split
 | 24 | 0.5867 | 0.5867 | 0.5867 | 0.5867 | 0.5867 |
 | 32 | 0.5867 | 0.5867 | 0.5867 | 0.5867 | 0.5867 |
 
-**Before the fix**, as published in `drop_elastic_solve.md` section 4:
+**Before the fix**, as published in `drop_elastic_solve.md` section 3:
 
 unified
 
@@ -110,11 +113,17 @@ unified block.
 
 **Unified is now strictly better than split.** It shows no overshoot at all; split still gains
 energy in five cells, worst at `4x10` where it reaches `0.6496`, `63 mm` above release. This
-reverses point 5 of the previous report, which had unified as the less robust of the two.
+reverses point 4 of the previous report, which had unified as the less robust of the two.
 
 ## 2. Convergence
 
 First-impact squash in mm. Rows are substeps, columns iterations.
+
+<p align="center"><img src="../figures/shank_parity/drop_elastic_solve_C0_substeps.png" width="1100" alt="squash and return height against substeps at 10 iterations, unified against split"></p>
+
+The figure is the `10`-iteration column of this section and of section 3. Unified approaches
+the reference from below and moves smoothly with the step; split overshoots by `43%` at `4`
+substeps and swings from `224` to `-2 mm` of return height over one doubling.
 
 **After the fix.**
 
@@ -175,57 +184,7 @@ the reference in both arrangements, and now that they no longer diverge it is wo
 explicitly that finite is not the same as converged: unified `16x2` returns `10.583 mm`, `28%`
 below the reference, while remaining perfectly stable.
 
-## 3. Cost
-
-Milliseconds per frame, 60 timed frames after 10 warmup, `wp.synchronize_device` around the
-timed region.
-
-**After the fix.**
-
-unified
-
-| substeps | 2 | 5 | 10 | 20 | 40 |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 2 | 3.28 | 5.58 | 9.36 | 16.88 | 31.66 |
-| 4 | 6.83 | 11.54 | 18.82 | 33.42 | 63.51 |
-| 8 | 13.31 | 22.31 | 37.27 | 66.85 | 125.50 |
-| 16 | 26.72 | 44.27 | 74.34 | 134.19 | 251.73 |
-
-split
-
-| substeps | 2 | 5 | 10 | 20 | 40 |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 2 | 3.35 | 5.60 | 9.41 | 17.07 | 31.97 |
-| 4 | 6.84 | 11.37 | 19.26 | 33.52 | 63.41 |
-| 8 | 13.17 | 23.30 | 37.64 | 67.18 | 126.46 |
-| 16 | 26.60 | 44.30 | 74.15 | 133.81 | 254.50 |
-
-**Before the fix.**
-
-unified
-
-| substeps | 2 | 5 | 10 | 20 | 40 |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 2 | 3.40 | 5.62 | 9.40 | 16.92 | 31.94 |
-| 4 | 6.65 | 11.30 | 18.72 | 33.42 | 63.58 |
-| 8 | 13.20 | 22.28 | 37.46 | 67.04 | 128.07 |
-| 16 | 26.57 | 44.51 | 75.48 | 136.23 | 256.91 |
-
-split
-
-| substeps | 2 | 5 | 10 | 20 | 40 |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 2 | 3.30 | 5.60 | 9.43 | 17.20 | 32.03 |
-| 4 | 6.63 | 11.13 | 19.12 | 34.15 | 64.39 |
-| 8 | 13.17 | 22.54 | 38.05 | 68.46 | 129.36 |
-| 16 | 26.48 | 44.95 | 75.90 | 137.29 | 260.30 |
-
-Differences are within `2%` at every point and are mostly negative, i.e. the fixed tree is
-marginally faster. That is measurement noise plus the removal of a branch; the fix itself adds
-three array reads and a comparison per joint, in a kernel that runs once per step rather than
-once per iteration. Cost is not a reason to avoid it.
-
-## 4. Return height
+## 3. Return height
 
 In mm.
 
@@ -283,6 +242,72 @@ whole grid and moves smoothly with the discretization. Split spans `[-2.22, 223.
 discernible trend: at `8x10` the payload never recovers above its resting height, and at `4x10`
 it rebounds to four and a half times the height it was dropped from.
 
+## 4. Time response
+
+The tables above reduce each run to two scalars. These are the trajectories they come from, at
+`10` iterations, one figure per arrangement with the axes shared between them.
+
+<p align="center"><img src="../figures/shank_parity/drop_elastic_time_response_unified.png" width="620" alt="unified drop response against substep count"></p>
+
+**Unified stays bounded at every step size.** The first impact is nearly step-independent; the
+rebound is not, and grows as the step is refined. The payload never returns above the height it
+was released from.
+
+<p align="center"><img src="../figures/shank_parity/drop_elastic_time_response_split.png" width="620" alt="split drop response against substep count"></p>
+
+**Split creates energy, and how much depends on the step.** Every substep count but the finest
+throws the payload back above its release height, and at worst the leg stores several times the
+energy the drop makes available. This is the overshoot of section 1 seen as a trajectory rather
+than as a peak.
+
+### 4.1 The same sweep without contact
+
+The step example applies `1000 N` at the tip of a blade clamped to the world and has no ground
+contact. Its clamp is a fixed joint onto an elastic endpoint, the joint the C0 snapshot applies
+to.
+
+<p align="center"><img src="../figures/shank_parity/step_elastic_time_response_unified.png" width="620" alt="unified tip response to a 1000 N step against substep count"></p>
+
+<p align="center"><img src="../figures/shank_parity/step_elastic_time_response_split.png" width="620" alt="split tip response to a 1000 N step against substep count"></p>
+
+Split settles on the model equilibrium at every substep count. Unified settles above it, and the
+offset persists to the end of the `1.05 s` run. Percentages below are measured against the model
+equilibrium, the dashed line. The distance to the Abaqus line is modelling error common to both
+arrangements and is the subject of `shank_parity.md` section 1.
+
+The offset is a convergence limit, not a bias. At 16 substeps:
+
+| iterations | unified | split |
+| ---: | ---: | ---: |
+| 10 | `+8.03%` | `-0.00%` |
+| 40 | `+0.45%` | `+0.02%` |
+| 160 | `+0.02%` | `+0.02%` |
+
+Both arrangements reach the same static deflection, `0.07787 m`, given enough iterations.
+
+The offset is a function of `k h^2`, the dimensionless group of `elastic_dual_runaway.tex`.
+Varying the clamp stiffness and the step size independently:
+
+| `k h^2` | configurations | unified error |
+| ---: | --- | ---: |
+| `1.56` | `ke=1e6` at 4 substeps, `ke=1.6e7` at 16 | `0.30%`, `0.26%` |
+| `0.39` | `ke=1e6` at 8 substeps, `ke=4e6` at 16 | `3.20%`, `2.81%` |
+| `0.098` | `ke=1e6` at 16 substeps, `ke=2.5e5` at 8 | `8.03%`, `8.73%` |
+
+Configurations with equal `k h^2` give equal error, so the substep count enters only through
+`h`. Coarsening the step and stiffening the clamp are equally effective; refining the step
+reduces accuracy. The configuration used in this report has `k h^2 = 0.098`.
+
+The two arrangements partition the system differently, and the coupling each one cuts is left to
+the outer iteration. Unified solves frame and modal coordinates in one block and cuts at the
+clamp joint. Split solves the frame in the articulation, where the clamp is resolved directly,
+and cuts between frame and modes. The step load acts through the clamp; the drop's contact acts
+on a surface the modes displace and so couples frame to modes. Each test therefore loads the
+coupling that one arrangement leaves to the iteration.
+
+The ordering here does not contradict section 4: which arrangement requires more iterations
+follows from which coupling the configuration loads.
+
 ## 5. Control
 
 Maximum absolute difference in PRDM squash between the two arrangements, over all 20
@@ -291,7 +316,7 @@ the comparison above is not confounded.
 
 ## 6. Limits
 
-The section 4 script of the original study was not in the repository and could not be
+The stability-sweep script of the original study was not in the repository and could not be
 recovered, so `drop_elastic_stability.py` is a reconstruction from the published description.
 It reproduces the release height `0.5867` and the pre-fix table's structure, but the two were
 not executed from the same source, and the "before" column of section 1 is quoted from the
@@ -308,7 +333,9 @@ Everything was measured on `cuda:0` only.
 
 | path | what |
 | --- | --- |
-| `me/scripts/shank_parity/drop_elastic_solve.py` | discretization grid, cost and convergence |
+| `me/scripts/shank_parity/drop_elastic_solve.py` | discretization grid and convergence |
+| `me/scripts/shank_parity/drop_elastic_solve_figures.py` | the section 2 figure, from the cached sweeps |
+| `me/scripts/shank_parity/elastic_time_response.py` | the section 4 figures, re-run against the cached scalars |
 | `me/scripts/shank_parity/drop_elastic_stability.py` | the stability sweep of section 1 |
 | `me/data/shank_parity/drop_elastic_solve_c0.json` | measurements with the fix |
 | `me/data/shank_parity/drop_elastic_solve.json` | measurements before the fix, unchanged from `drop_elastic_solve.md` |
