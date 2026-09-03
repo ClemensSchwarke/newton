@@ -34,9 +34,8 @@ python -m me.scripts.view_elastic_contact_comparison
    assembly-ordering lag described in section 1.1.
 3. Below those thresholds the split result differs in sign, not only in magnitude: on the
    slab it terminates behind its starting position with the shear reversed.
-4. The toggle costs the same either way, because both sides factor a block of the same
-   width. The commit did not: on a 4096-world compliant ANYmal stepping an identical
-   state it added `20.2 ms` of GPU time per frame, `18%`.
+4. The commit costs `20.2 ms` of GPU time per frame on a 4096-world compliant ANYmal stepping
+   an identical state, `18%`.
 5. That cost is now recovered, so the unified arrangement is no longer the more expensive one
    and nothing is left to weigh against it. Leaving the reduced elastic bodies out of the
    articulation layout, so their anchored rows are never factored, and correcting the launch
@@ -123,25 +122,6 @@ rather than from `body_forces`, so this is a candidate rather than an explanatio
 
 ## 3. Cost per step
 
-10 iterations, 200 timed steps after 20 warmup steps, `cuda:0`, `wp.synchronize_device`
-around the timed region.
-
-| path | unified | split | unified/split |
-| --- | ---: | ---: | ---: |
-| local | 6.008 ms | 5.986 ms | 1.004 |
-| block_sparse_joints | 4.331 ms | 4.339 ms | 0.998 |
-
-These two numbers price the toggle, not the commit. `SolverVBD` sets
-
-```python
-self.elastic_body_block_width = int(model.elastic_max_mode_count) + 6
-```
-
-unconditionally, so both sides of the toggle allocate, assemble and factor a block of the same
-width; `_elastic_frame_in_block` selects what fills it. The `n_m`-wide block exists only on the
-pre-merge tree, which the toggle cannot reach. Both models here also carry one elastic body
-with one mode, and at that size the step is launch-bound.
-
 ### 3.1 Cost of the commit
 
 Compliant ANYmal, four blades of four modes each, 8 substeps, 10 iterations,
@@ -181,31 +161,12 @@ The elastic path carries the whole difference, and it roughly doubles, `16.68 ->
 It is the smaller system per robot. The articulation holds 17 bodies at 6 DOF, so 102 DOF in
 33 blocks of 36 floats; the elastic side holds 4 blades in `6 + n_m = 10` wide blocks, so 40
 DOF in 400 floats. Those two counts overlap: the 4 blade frames are 24 of the 102 and 24 of the
-40, which is precisely the pinned rows section 3.2 measures. The disparity is in how each is
+40, which is precisely the pinned rows. The disparity is in how each is
 parallelized, not in size: `solve_articulation_sparse_block32_scalar` gets 128 threads per
 robot, while `assemble_elastic_joints` launches one scalar thread per elastic body and that
 thread owns all 100 block entries. Growth tracks the width ratio `2.5` rather than
 its cube, `x1.72` for `assemble_elastic_contacts`, `x2.68` for `assemble_elastic_joints`,
 `x2.97` for the solve, so the cost is block traffic and not factorization flops.
-
-### 3.2 Headroom in the articulation layout
-
-Pinning leaves the elastic body in the layout, so the merged tree pays for rows whose delta it
-then discards. Removing the blades from the model entirely shrinks the layout exactly as
-excluding them would. 4096 worlds, milliseconds per frame:
-
-| | bodies/robot | blocks/robot | joints/robot | solve | assemble | diagonal |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| with blades | 17 | 33 | 21 | 27.844 | 20.214 | 2.792 |
-| blades absent | 13 | 25 | 13 | 22.480 | 18.145 | 2.136 |
-
-`8.09 ms` against a regression of `20.22 ms`, and that is an upper bound. Each blade contributes
-two joints, its own free joint carrying the frame and modal coordinates, and the fixed
-shank-to-blade joint. The free joints are removable outright because the elastic block owns
-those degrees of freedom. The fixed joints are not: the shank is still constrained to the blade
-root, so they would become one-sided constraints reading the frame from ``body_q``, cheaper to
-assemble but not free. Claiming this requires `build_rigid_articulation_sparse_layout` to
-exclude elastic bodies and re-link the joints reaching them.
 
 Wall-clock ratios under this protocol are lower, `1.081` at 4096, because restoring four state
 arrays each frame adds a host-to-device copy to both sides. GPU time is the comparable figure.
@@ -217,11 +178,11 @@ free cases) and is reported only because it is the configuration closest to a tr
 This reproduces the compliance training regression: the run on `6b60fe9d` collects at `8.74 s`
 per iteration against `9.95 s` on `3ef32904`, `+13.8%`, with `Perf/learning_time` unchanged.
 
-### 3.3 Recovering the cost
+### 3.2 Recovering the cost
 
-Section 3.2 put the layout headroom at `8.09 ms`. Taking it, plus launch-configuration fixes on
-the per-elastic-body kernels, returns the unified arrangement to the pre-merge cost. Same
-state-locked protocol, 4096 worlds, `688128` contacts in every column:
+Leaving the reduced elastic bodies out of the articulation layout, plus launch-configuration
+fixes on the per-elastic-body kernels, returns the unified arrangement to the pre-merge cost.
+Same state-locked protocol, 4096 worlds, `688128` contacts in every column:
 
 | tree | GPU ms/frame |
 | --- | ---: |
@@ -274,7 +235,7 @@ restores that write.
 
 | path | what |
 | --- | --- |
-| `me/scripts/elastic_block_comparison.py` | accuracy, convergence and cost tables |
+| `me/scripts/elastic_block_comparison.py` | accuracy and convergence tables |
 | `me/scripts/view_elastic_block_comparison.py` | free beam, both arrangements side by side |
 | `me/scripts/view_elastic_contact_comparison.py` | sliding slab, both arrangements side by side |
 | `me/math/elastic_sparse_regression.tex` | indefinite-block diagnosis preceding this work |
