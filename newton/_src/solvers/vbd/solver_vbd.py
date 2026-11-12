@@ -456,6 +456,9 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
         - :attr:`~newton.Model.joint_limit_lower`/:attr:`~newton.Model.joint_limit_upper` and
           :attr:`~newton.Model.joint_limit_ke`/:attr:`~newton.Model.joint_limit_kd` are supported
           for REVOLUTE, PRISMATIC, and D6 joints.
+          Motor targets are not clamped to these bounds. Drives and stop reactions
+          act simultaneously, including on the legacy AVBD path. Clamp control targets
+          explicitly if that behavior is required.
         - Angular winding is retained for REVOLUTE joints and D6 joints with
           exactly one angular DOF. Tracking requires less than ``pi`` radians
           of relative rotation per solver step, including prediction and

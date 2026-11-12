@@ -13,9 +13,8 @@ from .rigid_vbd_kernels import (
     JointFrictionData,
     _drive_row_applies_force,
     _evaluate_drive_axis,
-    _evaluate_drive_limit_axis,
     _evaluate_joint_dissipation,
-    _limit_row_exists,
+    _evaluate_legacy_drive_axis,
     _load_joint_axis_drive_limit,
     _resolve_active_drive_row,
     evaluate_joint_force_hessian,
@@ -180,11 +179,7 @@ def _drive_effort(
     mode, error = _resolve_active_drive_row(
         q,
         axis.target_pos,
-        axis.lower,
-        axis.upper,
         _drive_row_applies_force(axis.material_drive_ke, axis.drive_kd),
-        _limit_row_exists(axis.material_limit_ke, axis.lower, axis.upper),
-        data.compliant_alm,
     )
     force = float(0.0)
     if mode == _DRIVE_LIMIT_MODE_DRIVE:
@@ -202,7 +197,7 @@ def _drive_effort(
                 1.0 / dt,
             )
         else:
-            force, _h = _evaluate_drive_limit_axis(
+            force, _h = _evaluate_legacy_drive_axis(
                 error,
                 rate,
                 axis.target_vel,
@@ -210,8 +205,6 @@ def _drive_effort(
                 axis.drive_ke,
                 axis.drive_kd,
                 axis.effort_limit,
-                0.0,
-                0.0,
                 1.0 / dt,
             )
     return -force

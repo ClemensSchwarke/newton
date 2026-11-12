@@ -2953,63 +2953,15 @@ def compute_projected_isotropic_friction(
 
 
 @wp.func
-def resolve_drive_limit_mode(
-    q: float,
-    target_pos: float,
-    lim_lower: float,
-    lim_upper: float,
-    has_drive: bool,
-    has_limits: bool,
-):
-    """Resolve drive/limit priority and compute position error [m or rad].
-
-    Limits take precedence: if q is outside [lower, upper], the active limit
-    wins. Otherwise the drive engages with target clamped to the limit range.
-
-    Returns:
-        (mode, err_pos) -- active mode constant and signed position error.
-    """
-    mode = _DRIVE_LIMIT_MODE_NONE
-    err_pos = float(0.0)
-    drive_target = target_pos
-    if has_limits:
-        drive_target = wp.clamp(target_pos, lim_lower, lim_upper)
-        if q < lim_lower:
-            mode = _DRIVE_LIMIT_MODE_LIMIT_LOWER
-            err_pos = q - lim_lower
-        elif q > lim_upper:
-            mode = _DRIVE_LIMIT_MODE_LIMIT_UPPER
-            err_pos = q - lim_upper
-    if mode == _DRIVE_LIMIT_MODE_NONE and has_drive:
-        mode = _DRIVE_LIMIT_MODE_DRIVE
-        err_pos = q - drive_target
-    return mode, err_pos
-
-
-@wp.func
 def _resolve_active_drive_row(
     q: float,
     target_pos: float,
-    lim_lower: float,
-    lim_upper: float,
     has_drive: bool,
-    has_limits: bool,
-    use_compliant_alm: int,
 ):
-    """Legacy mutex mode, or ALM drive mode with target clamped into limits.
-
-    ALM clamps so the drive never fights the separate limit row.
-    """
-    if use_compliant_alm == 0:
-        return resolve_drive_limit_mode(q, target_pos, lim_lower, lim_upper, has_drive, has_limits)
-
+    """Use the requested target independently of joint-limit activation."""
     if not has_drive:
         return _DRIVE_LIMIT_MODE_NONE, 0.0
-
-    drive_target = target_pos
-    if has_limits:
-        drive_target = wp.clamp(target_pos, lim_lower, lim_upper)
-    return _DRIVE_LIMIT_MODE_DRIVE, q - drive_target
+    return _DRIVE_LIMIT_MODE_DRIVE, q - target_pos
 
 
 @wp.func
@@ -3066,7 +3018,7 @@ def _clamp_drive_effort(force: float, hessian: float, effort_limit: float):
 
 
 @wp.func
-def _evaluate_drive_limit_axis(
+def _evaluate_legacy_drive_axis(
     error: float,
     rate: float,
     target_rate: float,
@@ -3074,11 +3026,9 @@ def _evaluate_drive_limit_axis(
     drive_k: float,
     drive_d: float,
     effort_limit: float,
-    limit_k: float,
-    limit_d: float,
     inv_dt: float,
 ):
-    """Legacy mutex drive/limit spring: one active mode, no dual.
+    """Evaluate a legacy motor spring without a dual.
 
     The damper is an explicit additive term (not folded into the residual).
     """
@@ -3088,8 +3038,6 @@ def _evaluate_drive_limit_axis(
             drive_k + drive_d * inv_dt,
             effort_limit,
         )
-    if active_mode == _DRIVE_LIMIT_MODE_LIMIT_LOWER or active_mode == _DRIVE_LIMIT_MODE_LIMIT_UPPER:
-        return limit_k * error + limit_d * rate, limit_k + limit_d * inv_dt
     return 0.0, 0.0
 
 
@@ -3327,12 +3275,10 @@ def _eval_joint_axis_drive_limit(
     use_compliant_alm: int,
     inv_dt: float,
 ):
-    """One DOF drive/limit force and Hessian: legacy mutex or ALM superposition."""
-    active_mode, err_pos = _resolve_active_drive_row(
-        q, axis.target_pos, axis.lower, axis.upper, has_drive, has_limits, use_compliant_alm
-    )
+    """Superpose motor and stop forces for one DOF in either solver mode."""
+    active_mode, err_pos = _resolve_active_drive_row(q, axis.target_pos, has_drive)
     if use_compliant_alm == 0:
-        return _evaluate_drive_limit_axis(
+        f_drive, H_drive = _evaluate_legacy_drive_axis(
             err_pos,
             rate,
             axis.target_vel,
@@ -3340,10 +3286,15 @@ def _eval_joint_axis_drive_limit(
             axis.drive_ke,
             axis.drive_kd,
             axis.effort_limit,
-            axis.limit_ke,
-            axis.limit_kd,
             inv_dt,
         )
+        f_limit = float(0.0)
+        H_limit = float(0.0)
+        if has_limits and (q < axis.lower or q > axis.upper):
+            limit_error = q - wp.clamp(q, axis.lower, axis.upper)
+            f_limit = axis.limit_ke * limit_error + axis.limit_kd * rate
+            H_limit = axis.limit_ke + axis.limit_kd * inv_dt
+        return f_drive + f_limit, H_drive + H_limit
 
     f_drive, H_drive = _evaluate_drive_axis(
         err_pos,
@@ -3551,12 +3502,13 @@ def _update_joint_axis_drive_limit_state(
     use_compliant_alm: int,
 ):
     """Update compliant drive/limit multipliers or the legacy shared penalty."""
-    active_mode, err_pos = _resolve_active_drive_row(
-        q, axis.target_pos, axis.lower, axis.upper, has_drive, has_limits, use_compliant_alm
-    )
+    active_mode, err_pos = _resolve_active_drive_row(q, axis.target_pos, has_drive)
     if use_compliant_alm == 0:
+        error = wp.abs(err_pos)
+        if has_limits:
+            error = wp.max(error, wp.max(axis.lower - q, q - axis.upper))
         joint_penalty_k[penalty_slot] = _ramp_penalty_k(
-            joint_penalty_k[penalty_slot], joint_material_k[penalty_slot], beta, wp.abs(err_pos)
+            joint_penalty_k[penalty_slot], joint_material_k[penalty_slot], beta, error
         )
         return
 
