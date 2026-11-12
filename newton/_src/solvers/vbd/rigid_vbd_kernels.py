@@ -3051,6 +3051,21 @@ def _spring_damper_step(error: float, rate_error: float, material_k: float, mate
 
 
 @wp.func
+def _clamp_drive_effort(force: float, hessian: float, effort_limit: float):
+    """Bound motor effort and retain a positive secant solve metric.
+
+    The exact tangent vanishes in saturation. Its unrestricted Newton step can
+    overshoot the target and alternate between opposite effort bounds.
+    """
+    bound = wp.max(effort_limit, 0.0)
+    if bound == 0.0:
+        return 0.0, 0.0
+    if wp.abs(force) > bound:
+        return wp.clamp(force, -bound, bound), hessian * (bound / wp.abs(force))
+    return force, hessian
+
+
+@wp.func
 def _evaluate_drive_limit_axis(
     error: float,
     rate: float,
@@ -3058,6 +3073,7 @@ def _evaluate_drive_limit_axis(
     active_mode: int,
     drive_k: float,
     drive_d: float,
+    effort_limit: float,
     limit_k: float,
     limit_d: float,
     inv_dt: float,
@@ -3067,9 +3083,10 @@ def _evaluate_drive_limit_axis(
     The damper is an explicit additive term (not folded into the residual).
     """
     if active_mode == _DRIVE_LIMIT_MODE_DRIVE:
-        return (
+        return _clamp_drive_effort(
             drive_k * error + drive_d * (rate - target_rate),
             drive_k + drive_d * inv_dt,
+            effort_limit,
         )
     if active_mode == _DRIVE_LIMIT_MODE_LIMIT_LOWER or active_mode == _DRIVE_LIMIT_MODE_LIMIT_UPPER:
         return limit_k * error + limit_d * rate, limit_k + limit_d * inv_dt
@@ -3084,11 +3101,12 @@ def _evaluate_drive_axis(
     active_mode: int,
     drive_k: float,
     drive_d: float,
+    effort_limit: float,
     axis_support: float,
     drive_lambda: float,
     inv_dt: float,
 ):
-    """Compliant ALM bilateral drive force/Hessian."""
+    """Evaluate the bounded compliant-ALM drive traction and solve metric."""
     if active_mode != _DRIVE_LIMIT_MODE_DRIVE or axis_support <= 0.0:
         return 0.0, 0.0
     row_error, row_k = _spring_damper_step(error, rate - target_rate, drive_k, drive_d, inv_dt)
@@ -3096,7 +3114,9 @@ def _evaluate_drive_axis(
         return 0.0, 0.0
     rho = _drive_auto_rho(axis_support, row_k)
     s, k_eff, _a = _compliant_alm_coefficients(row_k, rho)
-    return k_eff * row_error + s * drive_lambda, k_eff
+    bound = wp.max(effort_limit, 0.0)
+    multiplier = wp.clamp(drive_lambda, -bound, bound)
+    return _clamp_drive_effort(k_eff * row_error + s * multiplier, k_eff, bound)
 
 
 @wp.func
@@ -3107,20 +3127,24 @@ def _update_drive_lambda(
     active_mode: int,
     drive_k: float,
     drive_d: float,
+    effort_limit: float,
     axis_support: float,
     drive_lambda: float,
     inv_dt: float,
 ):
-    """Advance a compliant bilateral drive dual.
+    """Advance a compliant drive dual within the motor effort bound.
 
-    Inactive rows clear the multiplier; bilateral drives require no sign projection.
+    Inactive rows clear the multiplier. Saturation bounds both signs of effort.
     """
     if active_mode != _DRIVE_LIMIT_MODE_DRIVE or axis_support <= 0.0:
         return 0.0
     row_error, row_k = _spring_damper_step(error, rate - target_rate, drive_k, drive_d, inv_dt)
     if row_k <= 0.0:
         return 0.0
-    return _alm_relaxed_ascent(drive_lambda, row_error, row_k, _drive_auto_rho(axis_support, row_k))
+    bound = wp.max(effort_limit, 0.0)
+    multiplier = wp.clamp(drive_lambda, -bound, bound)
+    updated = _alm_relaxed_ascent(multiplier, row_error, row_k, _drive_auto_rho(axis_support, row_k))
+    return wp.clamp(updated, -bound, bound)
 
 
 @wp.func
@@ -3244,6 +3268,7 @@ class JointAxisDriveLimit:
     drive_ke: float
     limit_ke: float
     drive_kd: float
+    effort_limit: float
     limit_kd: float
     target_pos: float
     target_vel: float
@@ -3258,6 +3283,7 @@ def _load_joint_axis_drive_limit(
     penalty_slot: int,
     joint_target_ke: wp.array[float],
     joint_target_kd: wp.array[float],
+    joint_effort_limit: wp.array[float],
     joint_target_q: wp.array[float],
     joint_target_qd: wp.array[float],
     joint_limit_lower: wp.array[float],
@@ -3272,6 +3298,7 @@ def _load_joint_axis_drive_limit(
     axis.material_drive_ke = joint_target_ke[dof_idx]
     axis.material_limit_ke = joint_limit_ke[dof_idx]
     axis.drive_kd = joint_target_kd[dof_idx]
+    axis.effort_limit = joint_effort_limit[dof_idx]
     axis.limit_kd = joint_limit_kd[dof_idx]
     axis.target_pos = joint_target_q[target_q_idx]
     axis.target_vel = joint_target_qd[dof_idx]
@@ -3312,6 +3339,7 @@ def _eval_joint_axis_drive_limit(
             active_mode,
             axis.drive_ke,
             axis.drive_kd,
+            axis.effort_limit,
             axis.limit_ke,
             axis.limit_kd,
             inv_dt,
@@ -3324,6 +3352,7 @@ def _eval_joint_axis_drive_limit(
         active_mode,
         axis.drive_ke,
         axis.drive_kd,
+        axis.effort_limit,
         axis_support,
         drive_lambda,
         inv_dt,
@@ -3539,6 +3568,7 @@ def _update_joint_axis_drive_limit_state(
         active_mode,
         axis.material_drive_ke,
         axis.drive_kd,
+        axis.effort_limit,
         axis_support,
         joint_drive_lambda[dof_idx],
         inv_dt,
@@ -3949,6 +3979,7 @@ def evaluate_joint_force_hessian(
     # Drive parameters (DOF-indexed via joint_qd_start)
     joint_target_ke: wp.array[float],
     joint_target_kd: wp.array[float],
+    joint_effort_limit: wp.array[float],
     joint_target_q: wp.array[float],
     joint_target_qd: wp.array[float],
     # Limit parameters (DOF-indexed via joint_qd_start)
@@ -4317,6 +4348,7 @@ def evaluate_joint_force_hessian(
             c_start + 2,
             joint_target_ke,
             joint_target_kd,
+            joint_effort_limit,
             joint_target_q,
             joint_target_qd,
             joint_limit_lower,
@@ -4348,7 +4380,7 @@ def evaluate_joint_force_hessian(
                 joint_compliant_alm,
                 inv_dt,
             )
-            if H_scalar > 0.0:
+            if H_scalar > 0.0 or f_scalar != 0.0:
                 tau_drive, Haa_drive = apply_angular_drive_limit_torque(gradient, is_parent_body, f_scalar, H_scalar)
                 t_ang = t_ang + tau_drive
                 Haa_ang = Haa_ang + Haa_drive
@@ -4423,6 +4455,7 @@ def evaluate_joint_force_hessian(
             c_start + 2,
             joint_target_ke,
             joint_target_kd,
+            joint_effort_limit,
             joint_target_q,
             joint_target_qd,
             joint_limit_lower,
@@ -4462,7 +4495,7 @@ def evaluate_joint_force_hessian(
                 joint_compliant_alm,
                 inv_dt,
             )
-            if H_scalar > 0.0:
+            if H_scalar > 0.0 or f_scalar != 0.0:
                 if is_parent_body:
                     com_w = wp.transform_point(parent_pose, parent_com)
                     r = x_p - com_w
@@ -4589,6 +4622,7 @@ def evaluate_joint_force_hessian(
                         c_start + 2 + li,
                         joint_target_ke,
                         joint_target_kd,
+                        joint_effort_limit,
                         joint_target_q,
                         joint_target_qd,
                         joint_limit_lower,
@@ -4618,7 +4652,7 @@ def evaluate_joint_force_hessian(
                             joint_compliant_alm,
                             inv_dt,
                         )
-                        if H_scalar > 0.0:
+                        if H_scalar > 0.0 or f_scalar != 0.0:
                             force_drive, torque_drive, Hll_drive, Hal_drive, Haa_drive = apply_linear_drive_limit_force(
                                 axis_w, r_drive, is_parent_body, f_scalar, H_scalar
                             )
@@ -4643,6 +4677,7 @@ def evaluate_joint_force_hessian(
                         c_start + 2 + lin_count + ai,
                         joint_target_ke,
                         joint_target_kd,
+                        joint_effort_limit,
                         joint_target_q,
                         joint_target_qd,
                         joint_limit_lower,
@@ -4672,7 +4707,7 @@ def evaluate_joint_force_hessian(
                             joint_compliant_alm,
                             inv_dt,
                         )
-                        if H_scalar > 0.0:
+                        if H_scalar > 0.0 or f_scalar != 0.0:
                             tau_drive, Haa_drive = apply_angular_drive_limit_torque(
                                 gradient, is_parent_body, f_scalar, H_scalar
                             )
@@ -7863,6 +7898,7 @@ def solve_rigid_body(
     # Drive parameters (DOF-indexed via joint_qd_start)
     joint_target_ke: wp.array[float],
     joint_target_kd: wp.array[float],
+    joint_effort_limit: wp.array[float],
     joint_target_q: wp.array[float],
     joint_target_qd: wp.array[float],
     # Limit parameters (DOF-indexed via joint_qd_start)
@@ -8128,6 +8164,7 @@ def solve_rigid_body(
             joint_C_fric,
             joint_target_ke,
             joint_target_kd,
+            joint_effort_limit,
             joint_target_q,
             joint_target_qd,
             joint_limit_lower,
@@ -8256,6 +8293,7 @@ def update_duals_joint(
     beta_ang: float,
     joint_target_ke: wp.array[float],
     joint_target_kd: wp.array[float],
+    joint_effort_limit: wp.array[float],
     joint_target_q: wp.array[float],
     joint_target_qd: wp.array[float],
     joint_limit_lower: wp.array[float],
@@ -8613,6 +8651,7 @@ def update_duals_joint(
             c_start + 2,
             joint_target_ke,
             joint_target_kd,
+            joint_effort_limit,
             joint_target_q,
             joint_target_qd,
             joint_limit_lower,
@@ -8702,6 +8741,7 @@ def update_duals_joint(
             c_start + 2,
             joint_target_ke,
             joint_target_kd,
+            joint_effort_limit,
             joint_target_q,
             joint_target_qd,
             joint_limit_lower,
@@ -8807,6 +8847,7 @@ def update_duals_joint(
                     c_start + 2 + li,
                     joint_target_ke,
                     joint_target_kd,
+                    joint_effort_limit,
                     joint_target_q,
                     joint_target_qd,
                     joint_limit_lower,
@@ -8850,6 +8891,7 @@ def update_duals_joint(
                     c_start + 2 + lin_count + ai,
                     joint_target_ke,
                     joint_target_kd,
+                    joint_effort_limit,
                     joint_target_q,
                     joint_target_qd,
                     joint_limit_lower,

@@ -461,6 +461,9 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
           of relative rotation per solver step, including prediction and
           solver corrections.
         - :attr:`~newton.Control.joint_f` (feedforward forces) is supported.
+        - :attr:`~newton.Model.joint_effort_limit` bounds implicit motor effort, including
+          drive damping. Passive damping, friction, joint-limit reactions, armature,
+          and feedforward forces are not capped. Limits are read live.
         - :attr:`~newton.Model.joint_damping` is supported for REVOLUTE, PRISMATIC, and D6
           joints as a per-DOF passive viscous damper: ``force = -joint_damping * qd``
           [N or N·m]. Unlike drive damping (``joint_target_kd``), it always opposes
@@ -479,7 +482,7 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
           independent coordinate bounds with orthonormal axes in each axis group.
         - Revolute :attr:`~newton.Model.joint_armature` is supported by the experimental
           block-sparse articulation solve.
-        - Not supported: :attr:`~newton.Model.joint_effort_limit`, :attr:`~newton.Model.joint_velocity_limit`,
+        - Not supported: :attr:`~newton.Model.joint_velocity_limit`,
           :attr:`~newton.Model.joint_target_mode`, equality constraints, and the deprecated sparse mimic constraints.
         - REVOLUTE and D6 angular coordinates retain their turn counts, with or
           without mimic relationships. Drives, limits, friction, damping, and
@@ -6560,6 +6563,7 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
                     self.joint_C_fric,
                     model.joint_target_ke,
                     model.joint_target_kd,
+                    model.joint_effort_limit,
                     control.joint_target_q,
                     control.joint_target_qd,
                     model.joint_limit_lower,
@@ -6787,6 +6791,7 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
                     self.rigid_angular_beta,
                     model.joint_target_ke,
                     model.joint_target_kd,
+                    model.joint_effort_limit,
                     control.joint_target_q,
                     control.joint_target_qd,
                     model.joint_limit_lower,
@@ -7070,6 +7075,7 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
             model.joint_damping,
             model.joint_target_ke,
             model.joint_target_kd,
+            model.joint_effort_limit,
             model.joint_armature,
             self._rigid_articulation_armature_target,
             control.joint_target_q,
@@ -7332,6 +7338,7 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
                     self.joint_C_fric,
                     model.joint_target_ke,
                     model.joint_target_kd,
+                    model.joint_effort_limit,
                     control.joint_target_q,
                     control.joint_target_qd,
                     model.joint_limit_lower,
@@ -7853,7 +7860,7 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
         Other entries estimate additional effort needed for the same observed
         trajectory, without changing the simulated wrench or motion. This
         correction does not predict a simulation with that inertia enabled.
-        VBD's unsupported velocity/effort clamps are not included.
+        Velocity limits are not applied.
 
         Call immediately after :meth:`step`, before reset, another step, or
         changes to controls, poses, or model properties. The solver updates
@@ -8005,6 +8012,7 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
             "joint_target_q_start",
             "joint_target_ke",
             "joint_target_kd",
+            "joint_effort_limit",
             "joint_limit_lower",
             "joint_limit_upper",
             "joint_limit_ke",

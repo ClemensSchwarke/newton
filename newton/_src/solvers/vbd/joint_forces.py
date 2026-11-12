@@ -33,6 +33,7 @@ class JointForceData:
     joint_target_q_start: wp.array[int]
     joint_target_ke: wp.array[float]
     joint_target_kd: wp.array[float]
+    joint_effort_limit: wp.array[float]
     joint_limit_lower: wp.array[float]
     joint_limit_upper: wp.array[float]
     joint_limit_ke: wp.array[float]
@@ -145,6 +146,7 @@ def _drive_effort(
         data.joint_constraint_start[joint] + 2 + component,
         data.joint_target_ke,
         data.joint_target_kd,
+        data.joint_effort_limit,
         target_q,
         target_qd,
         data.joint_limit_lower,
@@ -194,6 +196,7 @@ def _drive_effort(
                 mode,
                 axis.drive_ke,
                 axis.drive_kd,
+                axis.effort_limit,
                 data.joint_drive_limit_support[dof],
                 data.joint_drive_lambda[dof],
                 1.0 / dt,
@@ -206,6 +209,7 @@ def _drive_effort(
                 mode,
                 axis.drive_ke,
                 axis.drive_kd,
+                axis.effort_limit,
                 0.0,
                 0.0,
                 1.0 / dt,
@@ -279,6 +283,7 @@ def evaluate_joint_forces(
         data.joint_C_fric,
         data.joint_target_ke,
         data.joint_target_kd,
+        data.joint_effort_limit,
         joint_target_q,
         joint_target_qd,
         data.joint_limit_lower,
