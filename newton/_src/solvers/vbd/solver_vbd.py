@@ -474,6 +474,8 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
           implicitly alongside Coulomb friction, including on mimic followers.
           Coefficients are read live; changing array values needs no notification
           or CUDA graph recapture. Other joint types do not use this property.
+          Scalar-coordinate damping and friction also act on reduced-elastic attachment
+          frames and modes in the local, Schur, and coupled articulation solves.
         - :attr:`~newton.Model.joint_friction` bounds dry-friction force or torque per DOF
           [N or N·m]. With ``rigid_compliant_alm=True`` and ``rigid_articulation_solve="local"``,
           REVOLUTE, PRISMATIC, D6, and BALL joints use projected reactions that support
@@ -973,8 +975,9 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
                 blocks, rather than being added to the sparse factorization.
                 Reduced elastic bodies in an articulation are solved inside its factorization, with
                 their joints at the deformed attachments; ``rigid_articulation_elastic_solve`` selects
-                how. Joint mimics, and armature, passive damping, or friction on joints attached to
-                elastic articulation bodies, are rejected in this mode. Elastic bodies outside every
+                how. Passive damping and friction at elastic attachments are supported for REVOLUTE,
+                PRISMATIC, and D6 joints. Elastic-side joint armature and joint mimics in models
+                containing elastic articulations remain unsupported. Elastic bodies outside every
                 articulation keep the local block solve.
                 The mode is intended for moderate-size articulations;
                 the local mode may be faster for very long chains because sparse factorization is
@@ -1766,6 +1769,7 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
         terms.force = wp.zeros(entry_count, dtype=wp.vec3, device=device)
         terms.torque = wp.zeros(entry_count, dtype=wp.vec3, device=device)
         terms.endpoint_torque = wp.zeros(entry_count, dtype=wp.vec3, device=device)
+        terms.attachment_offset = wp.zeros(entry_count, dtype=wp.vec3, device=device)
         terms.hessian_ll = wp.zeros(entry_count, dtype=wp.mat33, device=device)
         terms.hessian_al = wp.zeros(entry_count, dtype=wp.mat33, device=device)
         terms.hessian_aa = wp.zeros(entry_count, dtype=wp.mat33, device=device)
@@ -2086,9 +2090,9 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
 
         Raises:
             NotImplementedError: If joint mimics are combined with elastic articulation bodies.
-            ValueError: If a joint attached to an elastic articulation body uses armature,
-                passive damping, or Coulomb friction, whose elastic-side terms the reduced
-                elastic block does not model, or (``"coupled"``) if a joint attached to an elastic
+            ValueError: If a joint attached to an elastic articulation body uses armature
+                or passive terms on a joint type without scalar-coordinate support, or
+                (``"coupled"``) if a joint attached to an elastic
                 articulation body lies outside that body's articulation range.
         """
         layout = self.rigid_articulation_sparse_layout
@@ -2137,14 +2141,19 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
                     )
                 continue
             dofs = slice(int(qd_start[joint]), int(qd_start[joint + 1]))
-            names = [name for name, values in coordinate_terms if np.any(values[dofs] != 0.0)]
+            scalar_joint = joint_type[joint] in (int(JointType.REVOLUTE), int(JointType.PRISMATIC), int(JointType.D6))
+            names = [
+                name
+                for name, values in coordinate_terms
+                if (name == "joint_armature" or not scalar_joint) and np.any(values[dofs] != 0.0)
+            ]
             if names:
                 raise ValueError(
                     f"Joint {joint} attaches reduced elastic body {body} inside a block-sparse articulation and has "
                     f"nonzero {', '.join(names)}. rigid_articulation_elastic_solve={backend!r} does not support "
-                    "joint_armature, joint_damping, or joint_friction on such joints: these coordinate terms are not "
-                    "part of the reduced elastic block, so the block-sparse solve cannot apply them consistently. "
-                    "Set them to zero on this joint or use rigid_articulation_solve='local'."
+                    "these coordinate terms on this joint. Passive damping and friction require a REVOLUTE, "
+                    "PRISMATIC, or D6 joint; elastic-side joint_armature is not supported. "
+                    "Use supported joint coordinates and set unsupported terms to zero."
                 )
 
     def _select_elastic_block_solve_path(self, block_width: int) -> tuple[str, int]:
@@ -7368,6 +7377,8 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
                     self.rigid_compliant_alm,
                     model.joint_dof_dim,
                     self._joint_coordinates.data,
+                    self._joint_friction,
+                    model.joint_damping,
                     model.joint_parent_elastic_endpoint,
                     model.joint_child_elastic_endpoint,
                     model.joint_q_start,
