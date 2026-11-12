@@ -483,8 +483,9 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
           requires local compliant ALM. Friction values are read live, including during
           CUDA graph replay. BALL bounds apply in the parent-anchor frame; D6 uses
           independent coordinate bounds with orthonormal axes in each axis group.
-        - Revolute :attr:`~newton.Model.joint_armature` is supported by the experimental
-          block-sparse articulation solve.
+        - Revolute :attr:`~newton.Model.joint_armature` is supported for rigid endpoints
+          in local and block-sparse articulation solves. Local sweeps resolve the
+          relative-coordinate coupling iteratively. Values are read live.
         - Not supported: :attr:`~newton.Model.joint_velocity_limit`,
           :attr:`~newton.Model.joint_target_mode`, equality constraints, and the deprecated sparse mimic constraints.
         - REVOLUTE and D6 angular coordinates retain their turn counts, with or
@@ -1573,6 +1574,12 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
         )
         self.rigid_articulation_sparse_layout = None
         self._rigid_articulation_armature_target = None
+        self._rigid_armature_joints = None
+        if self._integrates_rigid_bodies and model.joint_count > 0:
+            revolute = np.flatnonzero(model.joint_type.numpy() == int(JointType.REVOLUTE))
+            if revolute.size > 0:
+                self._rigid_armature_joints = wp.array(revolute, dtype=wp.int32, device=self.device)
+                self._rigid_articulation_armature_target = wp.zeros_like(model.joint_qd)
         self.rigid_articulation_sparse_values = None
         self.rigid_articulation_sparse_rhs = None
         self.rigid_articulation_sparse_delta = None
@@ -1590,7 +1597,6 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
             )
             layout = self.rigid_articulation_sparse_layout
             if layout is not None:
-                self._rigid_articulation_armature_target = wp.zeros_like(model.joint_qd)
                 if layout.elastic_solve == "coupled":
                     # One flat storage: the rigid prefix keeps the 6 x 6 ``36 * slot`` and ``6 * row``
                     # indexing, the mixed articulations follow at the layout's variable offsets. The
@@ -5542,13 +5548,13 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
 
             # Rotor inertia must not inherit feedforward/external torques from
             # the body's force-shifted inertial target.
-            if self.rigid_articulation_sparse_layout is not None:
+            if self._rigid_armature_joints is not None:
                 wp.launch(
                     predict_articulation_armature,
-                    dim=self.rigid_articulation_sparse_layout.articulation_joint_count,
+                    dim=self._rigid_armature_joints.shape[0],
                     inputs=[
                         self._joint_coordinates.data,
-                        self.rigid_articulation_sparse_layout.articulation_joints,
+                        self._rigid_armature_joints,
                         state_in.body_q,
                         state_in.body_qd,
                         dt,
@@ -6587,6 +6593,8 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
                     self._joint_coordinates.data,
                     self._joint_friction,
                     model.joint_damping,
+                    model.joint_armature,
+                    self._rigid_articulation_armature_target,
                     self.body_forces,
                     self.body_torques,
                     self.body_hessian_ll,
@@ -7857,8 +7865,8 @@ class SolverVBD(TendonStateMixin, SolverBase, CouplingInterface):
 
         This estimate is supported for REVOLUTE, PRISMATIC, and D6 DOFs;
         unsupported and disabled entries are zero. It uses joint-side reflected
-        armature, not raw motor-shaft inertia. The block-sparse solve simulates
-        revolute armature for joints inside its articulations; those entries
+        armature, not raw motor-shaft inertia. Local and block-sparse solves
+        simulate revolute armature between rigid endpoints; those entries
         receive no correction because their drive effort already includes it.
         Other entries estimate additional effort needed for the same observed
         trajectory, without changing the simulated wrench or motion. This

@@ -305,13 +305,18 @@ def evaluate_joint_forces(
             recipient = reference
             ratio = coeffs[joint][1]
         armature_simulated = False
-        if data.body_articulation_local and jt == JointType.REVOLUTE:
-            armature_simulated = data.body_articulation_local[child] >= 0
+        if jt == JointType.REVOLUTE:
+            parent = c.parent[joint]
+            armature_simulated = True
+            if data.body_elastic_index:
+                armature_simulated = data.body_elastic_index[child] < 0
+                if parent >= 0:
+                    armature_simulated = armature_simulated and data.body_elastic_index[parent] < 0
         for component in range(c.dof_dim[joint, 0] + c.dof_dim[joint, 1]):
             dof = c.qd_start[joint] + component
             effort = _actuation_effort(c, joint, component, body_q, actuation)
             effort += _drive_effort(data, joint, component, body_q, body_q_prev, joint_target_q, joint_target_qd, dt)
-            # Sparse revolute inertia already contributes to the solved drive
+            # Simulated revolute inertia already contributes to the solved drive
             # effort. Only estimate armature that the selected path ignores.
             if not armature_simulated:
                 effort += joint_armature[dof] * (joint_qd[dof] - joint_qd_prev[dof]) / dt

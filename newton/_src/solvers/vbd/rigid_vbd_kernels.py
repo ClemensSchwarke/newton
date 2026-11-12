@@ -3471,6 +3471,46 @@ def _evaluate_joint_dissipation(
 
 
 @wp.func
+def _evaluate_joint_armature(
+    body: int,
+    joint: int,
+    body_q: wp.array[wp.transform],
+    coordinates: JointCoordinateData,
+    joint_enabled: wp.array[bool],
+    joint_armature: wp.array[float],
+    joint_armature_target: wp.array[float],
+    dt: float,
+):
+    """Apply relative rotor inertia using the incoming, force-free coordinate predictor."""
+    if not joint_enabled[joint] or coordinates.joint_type[joint] != JointType.REVOLUTE:
+        return _zero_force_hessian()
+    parent = coordinates.parent[joint]
+    child = coordinates.child[joint]
+    if coordinates.body_elastic_index:
+        if coordinates.body_elastic_index[child] >= 0:
+            return _zero_force_hessian()
+        if parent >= 0 and coordinates.body_elastic_index[parent] >= 0:
+            return _zero_force_hessian()
+    dof = coordinates.qd_start[joint]
+    armature = joint_armature[dof]
+    if armature <= 0.0:
+        return _zero_force_hessian()
+    q, gradient_parent, gradient_child = evaluate_coordinate(coordinates, joint, 0, body_q)
+    gradient = gradient_parent if body == parent else gradient_child
+    linear = wp.spatial_top(gradient)
+    angular = wp.spatial_bottom(gradient)
+    hessian = armature / (dt * dt)
+    force = hessian * (q - joint_armature_target[dof])
+    return (
+        -force * linear,
+        -force * angular,
+        hessian * wp.outer(linear, linear),
+        hessian * wp.outer(angular, linear),
+        hessian * wp.outer(angular, angular),
+    )
+
+
+@wp.func
 def _update_joint_axis_drive_limit_state(
     axis: JointAxisDriveLimit,
     q: float,
@@ -7859,6 +7899,8 @@ def solve_rigid_body(
     joint_coordinates: JointCoordinateData,
     joint_friction: JointFrictionData,
     joint_damping: wp.array[float],
+    joint_armature: wp.array[float],
+    joint_armature_target: wp.array[float],
     external_forces: wp.array[wp.vec3],
     external_torques: wp.array[wp.vec3],
     # Preaccumulated rigid-contact Hessian contributions
@@ -8142,6 +8184,22 @@ def solve_rigid_body(
         joint_H_ll += passive_H_ll
         joint_H_al += passive_H_al
         joint_H_aa += passive_H_aa
+
+        armature_force, armature_torque, armature_H_ll, armature_H_al, armature_H_aa = _evaluate_joint_armature(
+            body_index,
+            joint_idx,
+            body_q,
+            joint_coordinates,
+            joint_enabled,
+            joint_armature,
+            joint_armature_target,
+            dt,
+        )
+        joint_force += armature_force
+        joint_torque += armature_torque
+        joint_H_ll += armature_H_ll
+        joint_H_al += armature_H_al
+        joint_H_aa += armature_H_aa
 
         f_force = f_force + joint_force
         f_torque = f_torque + joint_torque
