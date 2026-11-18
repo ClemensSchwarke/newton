@@ -61,7 +61,6 @@ _SMALL_ANGLE_EPS = wp.constant(1.0e-7)
 _DRIVE_LIMIT_MODE_NONE = wp.constant(0)
 _DRIVE_LIMIT_MODE_LIMIT_LOWER = wp.constant(1)
 _DRIVE_LIMIT_MODE_LIMIT_UPPER = wp.constant(2)
-_DRIVE_LIMIT_MODE_DRIVE = wp.constant(3)
 
 _SMALL_LENGTH_EPS = wp.constant(1.0e-9)
 """Small length tolerance (e.g., segment length checks)"""
@@ -2953,18 +2952,6 @@ def compute_projected_isotropic_friction(
 
 
 @wp.func
-def _resolve_active_drive_row(
-    q: float,
-    target_pos: float,
-    has_drive: bool,
-):
-    """Use the requested target independently of joint-limit activation."""
-    if not has_drive:
-        return _DRIVE_LIMIT_MODE_NONE, 0.0
-    return _DRIVE_LIMIT_MODE_DRIVE, q - target_pos
-
-
-@wp.func
 def _nearest_limit_bound(q: float, lim_lower: float, lim_upper: float, has_limits: bool):
     """Pick the nearer finite bound for the limit residual (not the violated one).
 
@@ -3022,7 +3009,7 @@ def _evaluate_legacy_drive_axis(
     error: float,
     rate: float,
     target_rate: float,
-    active_mode: int,
+    has_drive: bool,
     drive_k: float,
     drive_d: float,
     effort_limit: float,
@@ -3032,7 +3019,7 @@ def _evaluate_legacy_drive_axis(
 
     The damper is an explicit additive term (not folded into the residual).
     """
-    if active_mode == _DRIVE_LIMIT_MODE_DRIVE:
+    if has_drive:
         return _clamp_drive_effort(
             drive_k * error + drive_d * (rate - target_rate),
             drive_k + drive_d * inv_dt,
@@ -3046,7 +3033,7 @@ def _evaluate_drive_axis(
     error: float,
     rate: float,
     target_rate: float,
-    active_mode: int,
+    has_drive: bool,
     drive_k: float,
     drive_d: float,
     effort_limit: float,
@@ -3055,7 +3042,7 @@ def _evaluate_drive_axis(
     inv_dt: float,
 ):
     """Evaluate the bounded compliant-ALM drive traction and solve metric."""
-    if active_mode != _DRIVE_LIMIT_MODE_DRIVE or axis_support <= 0.0:
+    if not has_drive or axis_support <= 0.0:
         return 0.0, 0.0
     row_error, row_k = _spring_damper_step(error, rate - target_rate, drive_k, drive_d, inv_dt)
     if row_k <= 0.0:
@@ -3072,7 +3059,7 @@ def _update_drive_lambda(
     error: float,
     rate: float,
     target_rate: float,
-    active_mode: int,
+    has_drive: bool,
     drive_k: float,
     drive_d: float,
     effort_limit: float,
@@ -3084,7 +3071,7 @@ def _update_drive_lambda(
 
     Inactive rows clear the multiplier. Saturation bounds both signs of effort.
     """
-    if active_mode != _DRIVE_LIMIT_MODE_DRIVE or axis_support <= 0.0:
+    if not has_drive or axis_support <= 0.0:
         return 0.0
     row_error, row_k = _spring_damper_step(error, rate - target_rate, drive_k, drive_d, inv_dt)
     if row_k <= 0.0:
@@ -3276,13 +3263,13 @@ def _eval_joint_axis_drive_limit(
     inv_dt: float,
 ):
     """Superpose motor and stop forces for one DOF in either solver mode."""
-    active_mode, err_pos = _resolve_active_drive_row(q, axis.target_pos, has_drive)
+    err_pos = q - axis.target_pos
     if use_compliant_alm == 0:
         f_drive, H_drive = _evaluate_legacy_drive_axis(
             err_pos,
             rate,
             axis.target_vel,
-            active_mode,
+            has_drive,
             axis.drive_ke,
             axis.drive_kd,
             axis.effort_limit,
@@ -3300,7 +3287,7 @@ def _eval_joint_axis_drive_limit(
         err_pos,
         rate,
         axis.target_vel,
-        active_mode,
+        has_drive,
         axis.drive_ke,
         axis.drive_kd,
         axis.effort_limit,
@@ -3502,9 +3489,9 @@ def _update_joint_axis_drive_limit_state(
     use_compliant_alm: int,
 ):
     """Update compliant drive/limit multipliers or the legacy shared penalty."""
-    active_mode, err_pos = _resolve_active_drive_row(q, axis.target_pos, has_drive)
+    err_pos = q - axis.target_pos
     if use_compliant_alm == 0:
-        error = wp.abs(err_pos)
+        error = wp.abs(err_pos) if has_drive else 0.0
         if has_limits:
             error = wp.max(error, wp.max(axis.lower - q, q - axis.upper))
         joint_penalty_k[penalty_slot] = _ramp_penalty_k(
@@ -3517,7 +3504,7 @@ def _update_joint_axis_drive_limit_state(
         err_pos,
         rate,
         axis.target_vel,
-        active_mode,
+        has_drive,
         axis.material_drive_ke,
         axis.drive_kd,
         axis.effort_limit,

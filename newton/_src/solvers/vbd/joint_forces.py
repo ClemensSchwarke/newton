@@ -9,14 +9,12 @@ from ...sim import JointType
 from ...sim.articulation import transform_2d_rotational_axes, transform_3d_rotational_axes
 from .joint_coordinates import JointCoordinateData, evaluate_coordinate, evaluate_coordinate_prev
 from .rigid_vbd_kernels import (
-    _DRIVE_LIMIT_MODE_DRIVE,
     JointFrictionData,
     _drive_row_applies_force,
     _evaluate_drive_axis,
     _evaluate_joint_dissipation,
     _evaluate_legacy_drive_axis,
     _load_joint_axis_drive_limit,
-    _resolve_active_drive_row,
     evaluate_joint_force_hessian,
 )
 
@@ -176,37 +174,32 @@ def _drive_effort(
         separation_prev = wp.transform_get_translation(child_prev) - wp.transform_get_translation(parent_prev)
         q = wp.dot(separation, axis_world)
         rate = wp.dot(separation - separation_prev, axis_world) / dt
-    mode, error = _resolve_active_drive_row(
-        q,
-        axis.target_pos,
-        _drive_row_applies_force(axis.material_drive_ke, axis.drive_kd),
-    )
-    force = float(0.0)
-    if mode == _DRIVE_LIMIT_MODE_DRIVE:
-        if data.compliant_alm == 1:
-            force, _h = _evaluate_drive_axis(
-                error,
-                rate,
-                axis.target_vel,
-                mode,
-                axis.drive_ke,
-                axis.drive_kd,
-                axis.effort_limit,
-                data.joint_drive_limit_support[dof],
-                data.joint_drive_lambda[dof],
-                1.0 / dt,
-            )
-        else:
-            force, _h = _evaluate_legacy_drive_axis(
-                error,
-                rate,
-                axis.target_vel,
-                mode,
-                axis.drive_ke,
-                axis.drive_kd,
-                axis.effort_limit,
-                1.0 / dt,
-            )
+    has_drive = _drive_row_applies_force(axis.material_drive_ke, axis.drive_kd)
+    error = q - axis.target_pos
+    if data.compliant_alm == 1:
+        force, _h = _evaluate_drive_axis(
+            error,
+            rate,
+            axis.target_vel,
+            has_drive,
+            axis.drive_ke,
+            axis.drive_kd,
+            axis.effort_limit,
+            data.joint_drive_limit_support[dof],
+            data.joint_drive_lambda[dof],
+            1.0 / dt,
+        )
+    else:
+        force, _h = _evaluate_legacy_drive_axis(
+            error,
+            rate,
+            axis.target_vel,
+            has_drive,
+            axis.drive_ke,
+            axis.drive_kd,
+            axis.effort_limit,
+            1.0 / dt,
+        )
     return -force
 
 
